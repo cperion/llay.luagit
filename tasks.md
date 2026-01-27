@@ -9,11 +9,13 @@
 - `fix(tools): support CLAY_PACKED_ENUM macro-based type definitions` (e8042c9)
 - `feat(ffi): add missing type definitions for text and layout` (a4f7722)
 - `feat(core): implement hash map functions and initialize arrays` (9e6b1f5)
+- `feat(core): implement text measurement caching` (321f0c0)
+- `feat(core): implement Clay__SizeContainersAlongAxis sizing engine` (current)
 
 **Summary:**
 - Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
 - Phase 2 (Core Infrastructure): ~85% complete (text measurement done, config handling pending)
-- Phase 3 (Layout Algorithms): Not started
+- Phase 3 (Layout Algorithms): ~40% complete (sizing engine done, final layout pending)
 - Phase 4 (Rendering): Not started
 - Phase 5 (Shell API): ~60% complete (helpers pending)
 - Phase 6 (Verification): ~50% complete (complex tests pending)
@@ -78,12 +80,12 @@ Implementation of the memory management and basic data structures.
 - [x] **Text Measurement & Caching**
      - [x] `Clay__MeasureTextCached` (Hash map lookup with generation-based cleanup)
      - [ ] `Clay__MeasureText` (The actual sizing logic - uses external callback)
-- [ ] **Sizing Logic (`Clay__SizeContainersAlongAxis`)**
+- [x] **Sizing Logic (`Clay__SizeContainersAlongAxis`)**
     This is the core layout engine. Break it down:
-    - [ ] Pass 1: Size `FIXED` and `PERCENT` containers.
-    - [ ] Pass 2: Calculate `innerContentSize` and `growContainerCount`.
-    - [ ] Pass 3: Distribute free space to `GROW` containers.
-    - [ ] Pass 4: Compress containers if parent doesn't fit (and not wrapping).
+     - [x] Pass 1: Size `FIXED` and `PERCENT` containers.
+     - [x] Pass 2: Calculate `innerContentSize` and `growContainerCount`.
+     - [x] Pass 3: Distribute free space to `GROW` containers.
+     - [x] Pass 4: Compress containers if parent doesn't fit (and not wrapping).
 - [ ] **Final Layout (`Clay__CalculateFinalLayout`)**
     - [ ] X-Axis Sizing Pass (Call `SizeContainersAlongAxis(true)`)
     - [ ] Text Wrapping Loop (Calculate line breaks based on width)

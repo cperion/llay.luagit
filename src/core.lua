@@ -313,6 +313,168 @@ local function calculate_sized_size(elem, parent_size, axis)
     return 0
 end
 
+local function Clay__SizeContainersAlongAxis(xAxis)
+    local bfsBuffer = context.layoutElementChildrenBuffer
+    local resizableContainerBuffer = context.openLayoutElementStack
+    
+    local roots = context.layoutElementsHashMapInternal.length
+    if context.layoutElementsHashMapInternal.length == 0 and context.layoutElements.length > 0 then
+        roots = 1
+    end
+    
+    for rootIndex = 0, roots - 1 do
+        bfsBuffer.length = 0
+        
+        local rootElementIndex = rootIndex
+        if context.layoutElementsHashMapInternal.length > 0 then
+            local rootHashItem = context.layoutElementsHashMapInternal.internalArray + rootIndex
+            if rootHashItem.layoutElement then
+                rootElementIndex = rootHashItem.layoutElement - context.layoutElements.internalArray
+            end
+        end
+        
+        Clay__int32_tArray_Add(bfsBuffer, rootElementIndex)
+        
+        local rootElement = context.layoutElements.internalArray + rootElementIndex
+        if rootElement.layoutConfig then
+            if xAxis then
+                if rootElement.layoutConfig.sizing.width.type ~= Clay__SizingType.PERCENT then
+                    rootElement.dimensions.width = math.max(math.min(rootElement.dimensions.width, rootElement.layoutConfig.sizing.width.size.minMax.max), rootElement.layoutConfig.sizing.width.size.minMax.min)
+                end
+            else
+                if rootElement.layoutConfig.sizing.height.type ~= Clay__SizingType.PERCENT then
+                    rootElement.dimensions.height = math.max(math.min(rootElement.dimensions.height, rootElement.layoutConfig.sizing.height.size.minMax.max), rootElement.layoutConfig.sizing.height.size.minMax.min)
+                end
+            end
+        end
+        
+        for i = 0, bfsBuffer.length - 1 do
+            local parentIndex = Clay__int32_tArray_Get(bfsBuffer, i)
+            local parent = context.layoutElements.internalArray + parentIndex
+            local parentStyleConfig = parent.layoutConfig
+            
+            if parentStyleConfig == nil then
+                parentStyleConfig = ffi.new("Clay_LayoutConfig")
+            end
+            
+            local growContainerCount = 0
+            local parentSize = xAxis and parent.dimensions.width or parent.dimensions.height
+            local parentPadding = xAxis and (parentStyleConfig.padding.left + parentStyleConfig.padding.right) or (parentStyleConfig.padding.top + parentStyleConfig.padding.bottom)
+            local innerContentSize = 0
+            local totalPaddingAndChildGaps = parentPadding
+            local sizingAlongAxis = (xAxis and parentStyleConfig.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT) or (not xAxis and parentStyleConfig.layoutDirection == Clay_LayoutDirection.TOP_TO_BOTTOM)
+            
+            resizableContainerBuffer.length = 0
+            local parentChildGap = parentStyleConfig.childGap
+            
+            for childOffset = 0, parent.childrenOrTextContent.children.length - 1 do
+                local childElementIndex = parent.childrenOrTextContent.children.elements[childOffset]
+                local childElement = context.layoutElements.internalArray + childElementIndex
+                
+                if childElement.childrenOrTextContent.children.length > 0 then
+                    Clay__int32_tArray_Add(bfsBuffer, childElementIndex)
+                end
+            end
+            
+            for childOffset = 0, parent.childrenOrTextContent.children.length - 1 do
+                local childElementIndex = parent.childrenOrTextContent.children.elements[childOffset]
+                local childElement = context.layoutElements.internalArray + childElementIndex
+                
+                if childElement.layoutConfig == nil then
+                    childElement.layoutConfig = ffi.new("Clay_LayoutConfig")
+                end
+                
+                local childSizing = xAxis and childElement.layoutConfig.sizing.width or childElement.layoutConfig.sizing.height
+                local childSize = xAxis and childElement.dimensions.width or childElement.dimensions.height
+                
+                if childSizing.type ~= Clay__SizingType.PERCENT and childSizing.type ~= Clay__SizingType.FIXED then
+                    Clay__int32_tArray_Add(resizableContainerBuffer, childElementIndex)
+                end
+                
+                if sizingAlongAxis then
+                    if childSizing.type ~= Clay__SizingType.PERCENT then
+                        innerContentSize = innerContentSize + childSize
+                    end
+                    if childSizing.type == Clay__SizingType.GROW then
+                        growContainerCount = growContainerCount + 1
+                    end
+                    if childOffset > 0 then
+                        innerContentSize = innerContentSize + parentChildGap
+                        totalPaddingAndChildGaps = totalPaddingAndChildGaps + parentChildGap
+                    end
+                else
+                    innerContentSize = math.max(childSize, innerContentSize)
+                end
+            end
+            
+            local growChildren = ffi.new("int32_t[?]", resizableContainerBuffer.length)
+            local growChildCount = 0
+            local usedInnerSize = 0
+            
+            for childOffset = 0, parent.childrenOrTextContent.children.length - 1 do
+                local childElementIndex = parent.childrenOrTextContent.children.elements[childOffset]
+                local childElement = context.layoutElements.internalArray + childElementIndex
+                local childSizing = xAxis and childElement.layoutConfig.sizing.width or childElement.layoutConfig.sizing.height
+                
+                if childSizing.type == Clay__SizingType.PERCENT then
+                    local percentSize = (parentSize - totalPaddingAndChildGaps) * childSizing.size.percent
+                    if xAxis then
+                        childElement.dimensions.width = percentSize
+                    else
+                        childElement.dimensions.height = percentSize
+                    end
+                    usedInnerSize = usedInnerSize + percentSize
+                end
+                
+                if childSizing.type == Clay__SizingType.GROW then
+                    growChildren[growChildCount] = childElementIndex
+                    growChildCount = growChildCount + 1
+                end
+            end
+            
+            if growChildCount > 0 then
+                local availableSpace = parentSize - totalPaddingAndChildGaps - usedInnerSize
+                local growSizePerChild = availableSpace / growChildCount
+                
+                for j = 0, growChildCount - 1 do
+                    local childElement = context.layoutElements.internalArray + growChildren[j]
+                    if xAxis then
+                        childElement.dimensions.width = math.max(math.min(growSizePerChild, childElement.layoutConfig.sizing.width.size.minMax.max), childElement.layoutConfig.sizing.width.size.minMax.min)
+                    else
+                        childElement.dimensions.height = math.max(math.min(growSizePerChild, childElement.layoutConfig.sizing.height.size.minMax.max), childElement.layoutConfig.sizing.height.size.minMax.min)
+                    end
+                end
+            end
+            
+            local totalUsedSize = totalPaddingAndChildGaps
+            
+            for childOffset = 0, parent.childrenOrTextContent.children.length - 1 do
+                local childElementIndex = parent.childrenOrTextContent.children.elements[childOffset]
+                local childElement = context.layoutElements.internalArray + childElementIndex
+                local childSize = xAxis and childElement.dimensions.width or childElement.dimensions.height
+                totalUsedSize = totalUsedSize + childSize
+            end
+            
+            if sizingAlongAxis then
+                local overflow = totalUsedSize - parentSize
+                if overflow > 0 and growChildCount > 0 then
+                    local shrinkPerChild = overflow / growChildCount
+                    for j = 0, growChildCount - 1 do
+                        local childElement = context.layoutElements.internalArray + growChildren[j]
+                        local currentSize = xAxis and childElement.dimensions.width or childElement.dimensions.height
+                        local newSize = currentSize - shrinkPerChild
+                        if xAxis then
+                            childElement.dimensions.width = math.max(newSize, childElement.layoutConfig.sizing.width.size.minMax.min)
+                        else
+                            childElement.dimensions.height = math.max(newSize, childElement.layoutConfig.sizing.height.size.minMax.min)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function calculate_layout()
     if context.layoutElements.length <= 0 then
         return
