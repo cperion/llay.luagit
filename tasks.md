@@ -16,7 +16,7 @@
 **Summary:**
 - Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
 - Phase 2 (Core Infrastructure): ~85% complete (text measurement done, config handling pending)
-- Phase 3 (Layout Algorithms): ~40% complete (sizing engine done, final layout pending)
+- Phase 3 (Layout Algorithms): ~50% complete (sizing engine done, children tracking done)
 - Phase 4 (Rendering): Not started
 - Phase 5 (Shell API): ~60% complete (helpers pending)
 - Phase 6 (Verification): ~50% complete (complex tests pending)

@@ -614,6 +614,22 @@ function M.initialize(capacity, dims)
     
     context.measureTextHashMapInternal.length = 1
     
+    context.layoutElementTreeNodeArray1.capacity = max_elements
+    context.layoutElementTreeNodeArray1.length = 0
+    context.layoutElementTreeNodeArray1.internalArray = ffi.cast("Clay__LayoutElementTreeNode*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("Clay__LayoutElementTreeNode"), context.internalArena))
+    
+    context.layoutElementTreeRoots.capacity = max_elements
+    context.layoutElementTreeRoots.length = 0
+    context.layoutElementTreeRoots.internalArray = ffi.cast("Clay__LayoutElementTreeRoot*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("Clay__LayoutElementTreeRoot"), context.internalArena))
+    
+    context.treeNodeVisited.capacity = max_elements
+    context.treeNodeVisited.length = 0
+    context.treeNodeVisited.internalArray = ffi.cast("bool*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("bool"), context.internalArena))
+    
+    context.layoutElementChildrenBuffer.capacity = max_elements
+    context.layoutElementChildrenBuffer.length = 0
+    context.layoutElementChildrenBuffer.internalArray = Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("int32_t"), context.internalArena)
+    
     return context
 end
 
@@ -669,6 +685,12 @@ function M.close_element()
         error("Close element called with no open elements")
     end
     context.openLayoutElementStack.length = context.openLayoutElementStack.length - 1
+    
+    if context.openLayoutElementStack.length > 0 then
+        local parentIndex = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
+        local parent = context.layoutElements.internalArray + parentIndex
+        parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
+    end
 end
 
 function M.open_text_element(text, config)

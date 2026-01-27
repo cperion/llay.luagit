@@ -517,6 +517,32 @@ typedef struct {
     Clay__ScrollContainerDataInternal *internalArray;
 } Clay__ScrollContainerDataInternalArray;
 
+typedef struct {
+    Clay_LayoutElement *layoutElement;
+    Clay_Vector2 position;
+    Clay_Vector2 nextChildOffset;
+} Clay__LayoutElementTreeNode;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__LayoutElementTreeNode *internalArray;
+} Clay__LayoutElementTreeNodeArray;
+
+typedef struct {
+    int32_t layoutElementIndex;
+    uint32_t parentId;
+    uint32_t clipElementId;
+    int16_t zIndex;
+    Clay_Vector2 pointerOffset;
+} Clay__LayoutElementTreeRoot;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__LayoutElementTreeRoot *internalArray;
+} Clay__LayoutElementTreeRootArray;
+
 struct Clay_Context {
     int32_t maxElementCount;
     int32_t maxMeasureTextCacheWordCount;
@@ -555,6 +581,8 @@ struct Clay_Context {
     Clay__charArray dynamicStringData;
     Clay__LayoutElementHashMapItemArray layoutElementsHashMapInternal;
     Clay__int32_tArray layoutElementsHashMap;
+    Clay__LayoutElementTreeNodeArray layoutElementTreeNodeArray1;
+    Clay__LayoutElementTreeRootArray layoutElementTreeRoots;
     Clay__MeasureTextCacheItemArray measureTextHashMapInternal;
     Clay__int32_tArray measureTextHashMapInternalFreeList;
     Clay__int32_tArray measureTextHashMap;
