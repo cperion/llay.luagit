@@ -27,9 +27,6 @@ test:
 	@echo "Running llay test suite..."
 	@luajit tests/run.lua
 
-clean:
-	@echo "Cleaning..."
-	rm -f $(BUILD_DIR)/libclay_ref.so
-	rm -f $(BUILD_DIR)/generate_golden
-	rm -f $(BUILD_DIR)/golden_*.txt
-	@echo "Done!"
+demo:
+	@echo "Running Llay Love2D demo..."
+	@cd demo-love2d && love .

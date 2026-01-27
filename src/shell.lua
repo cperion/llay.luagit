@@ -14,6 +14,7 @@ M.AlignY = { TOP = 0, CENTER = 1, BOTTOM = 2 }
 M.SizingType = { FIT = 0, GROW = 1, PERCENT = 2, FIXED = 3 }
 M.TextWrap = { WORDS = 0, NEWLINES = 1, NONE = 2 }
 M.PointerCapture = { CAPTURE = 0, PASSTHROUGH = 1 }
+M.FloatingAttachToElement = { NONE = 0, PARENT = 1, ELEMENT_WITH_ID = 2, ROOT = 3 }
 
 -- ==================================================================================
 -- Config Converters (Lua Table -> C Struct)
@@ -184,6 +185,19 @@ local function parse_floating_config(tbl)
 	return f
 end
 
+local function parse_clip_config(tbl)
+	local c = ffi.new("Clay_ClipElementConfig")
+	if not tbl then
+		return c
+	end
+	c.horizontal = tbl.horizontal or false
+	c.vertical = tbl.vertical or false
+	if tbl.childOffset then
+		c.childOffset = { x = tbl.childOffset.x or 0, y = tbl.childOffset.y or 0 }
+	end
+	return c
+end
+
 local function parse_corner_radius(val)
 	local c = ffi.new("Clay_CornerRadius")
 	if type(val) == "number" then
@@ -267,6 +281,9 @@ function M.Element(arg1, arg2, arg3)
 		end
 		if config.floating then
 			declaration.floating = parse_floating_config(config.floating)
+		end
+		if config.clip then
+			declaration.clip = parse_clip_config(config.clip)
 		end
 
 		if aspect_ratio ~= 0 then

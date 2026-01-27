@@ -42,7 +42,18 @@ local Clay_PointerDataInteractionState = { PRESSED_THIS_FRAME = 0, PRESSED = 1, 
 local Clay_PointerCaptureMode = { CAPTURE = 0, PASSTHROUGH = 1 }
 local Clay_FloatingAttachToElement = { NONE = 0, PARENT = 1, ELEMENT_WITH_ID = 2, ROOT = 3 }
 
-local CLAY__SPACECHAR = ffi.new("Clay_String", { length = 1, chars = " " })
+local CLAY__SPACECHAR_CHARS = ffi.new("char[2]", " \0")
+local CLAY__SPACECHAR_SLICE = ffi.new("Clay_StringSlice", { length = 1, chars = CLAY__SPACECHAR_CHARS, baseChars = CLAY__SPACECHAR_CHARS })
+
+-- ==================================================================================
+-- GC Anchors (Prevents LuaJIT GC from reaping FFI memory)
+-- ==================================================================================
+
+local _ANCHORS = {
+    arena_memory = nil,
+    context = nil,
+    callbacks = {}
+}
 
 -- ==================================================================================
 -- Globals (Module State)
@@ -52,6 +63,7 @@ local context = nil
 local measure_text_fn = nil
 local query_scroll_offset_fn = nil
 local next_element_id = 1
+local DEBUG_MODE = os.getenv("LLAY_DEBUG") == "1"
 
 -- ==================================================================================
 -- Helpers: Math & Memory
@@ -80,16 +92,107 @@ end
 
 local function Clay__Array_Allocate_Arena(capacity, item_size, arena)
 	local total_size = capacity * item_size
-	-- Strict 64-byte alignment using bit operations
-	local current_ptr = tonumber(ffi.cast("uintptr_t", arena.nextAllocation))
-	local aligned_ptr = bit.band(current_ptr + 63, bit.bnot(63))
+	-- Safe 64-byte alignment using 64-bit aware arithmetic
+	local current_ptr = tonumber(arena.nextAllocation)
+	local padding = (64 - (current_ptr % 64)) % 64
+	local aligned_ptr = current_ptr + padding
 	
 	local next_alloc = aligned_ptr + total_size
 	if next_alloc > tonumber(arena.capacity) then
-		error("Clay Arena capacity exceeded: Requested " .. total_size .. " at " .. aligned_ptr)
+		error("Clay Arena capacity exceeded: Requested " .. total_size .. " bytes. Allocated: " .. next_alloc .. " of " .. tonumber(arena.capacity))
 	end
-	arena.nextAllocation = ffi.cast("uintptr_t", next_alloc)
-	return ffi.cast("void*", arena.memory + aligned_ptr)
+	arena.nextAllocation = next_alloc
+	local result = arena.memory + aligned_ptr
+
+	return ffi.cast("void*", result)
+end
+
+-- ==================================================================================
+-- Inspector Module (Runtime Diagnostics)
+-- ==================================================================================
+
+local Inspector = {}
+
+function Inspector.check_arena_health()
+	if context == nil then
+		print("[LLAY INSPECTOR] Context not initialized")
+		return
+	end
+	
+	local next_alloc = tonumber(context.internalArena.nextAllocation)
+	local cap = tonumber(context.internalArena.capacity)
+	local usage_pct = (next_alloc / cap) * 100
+	
+	print(string.format("[LLAY INSPECTOR] Arena: %d/%d bytes (%.2f%% used)", next_alloc, cap, usage_pct))
+	
+	if usage_pct > 95 then
+		print("[LLAY WARNING] Arena nearly full! Segfault imminent.")
+	elseif usage_pct > 80 then
+		print("[LLAY INFO] Arena usage high.")
+	end
+end
+
+function Inspector.validate_pointer(ptr, label)
+	if context == nil then
+		print("[LLAY INSPECTOR] Context not initialized")
+		return
+	end
+	
+	local p_addr = ffi.cast("uintptr_t", ptr)
+	local start_addr = ffi.cast("uintptr_t", context.internalArena.memory)
+	local end_addr = start_addr + context.internalArena.capacity
+	
+	local p_num = tonumber(p_addr)
+	local start_num = tonumber(start_addr)
+	local end_num = tonumber(end_addr)
+	
+	if p_num < start_num or p_num >= end_num then
+		error(string.format("[LLAY CRITICAL] Pointer escape! %s (%p) outside arena [%p - %p]", 
+			label or "Unknown", ptr, start_addr, end_addr))
+	end
+end
+
+function Inspector.trace_stack()
+	if context == nil then
+		print("[LLAY INSPECTOR] Context not initialized")
+		return
+	end
+	
+	local depth = context.openLayoutElementStack.length
+	print(string.format("[LLAY INSPECTOR] Stack depth: %d", depth))
+	
+	if depth > 100 then
+		print("[LLAY WARNING] Deep nesting or unbalanced Open/Close detected!")
+	end
+end
+
+M.Inspector = Inspector
+
+-- Debug helper - get layout element by index
+function M._debug_get_element(idx)
+	if context.layoutElements.internalArray == nil then
+		return nil
+	end
+	return context.layoutElements.internalArray + idx
+end
+
+-- Debug helper - print element structure
+function M._debug_print_element(idx, indent)
+	indent = indent or 0
+	local elem = M._debug_get_element(idx)
+	if elem == nil then
+		print(string.rep("  ", indent) .. "Element " .. idx .. ": nil")
+		return
+	end
+	
+	local indent_str = string.rep("  ", indent)
+	print(indent_str .. "Element " .. idx .. ":")
+	print(indent_str .. "  children: " .. elem.childrenOrTextContent.children.length)
+	for i = 0, elem.childrenOrTextContent.children.length - 1 do
+		local childIdx = elem.childrenOrTextContent.children.elements[i]
+		print(indent_str .. "    child[" .. i .. "] = " .. childIdx)
+		M._debug_print_element(childIdx, indent + 1)
+	end
 end
 
 local function Clay__GetHashMapItem(id)
@@ -768,12 +871,10 @@ local function Clay__HashStringContentsWithConfig(text, config)
 	local offset = 0
 	-- Hash Text Chars
 	for i = 0, text.length - 1 do
-		local c = string.byte(text.chars, i + 1) -- Lua string byte is 1-based, but ffi ptr is 0-based
-		if text.chars[i] ~= 0 then -- Assuming null termination isn't guaranteed but check
-			hash = hash + text.chars[i]
-			hash = hash + bit.lshift(hash, 10)
-			hash = bit.bxor(hash, bit.rshift(hash, 6))
-		end
+		local c = text.chars[i]  -- Direct access to char pointer
+		hash = hash + c
+		hash = hash + bit.lshift(hash, 10)
+		hash = bit.bxor(hash, bit.rshift(hash, 6))
 	end
 	-- Hash Config
 	hash = hash + config.fontId
@@ -876,7 +977,7 @@ local function Clay__MeasureTextCached(text, config)
 	local measuredWidth = 0
 	local measuredHeight = 0
 	local spaceWidth =
-		measure_text_fn(ffi.cast("Clay_StringSlice*", CLAY__SPACECHAR), config, context.measureTextUserData).width
+		measure_text_fn(CLAY__SPACECHAR_SLICE, config, context.measureTextUserData).width
 
 	local tempWord = ffi.new("Clay__MeasuredWord", { next = -1 })
 	local previousWord = tempWord
@@ -950,7 +1051,7 @@ end
 -- Sizing Algorithm
 -- ==================================================================================
 
-local function Clay__SizeContainersAlongAxis(xAxis)
+	local function Clay__SizeContainersAlongAxis(xAxis)
 	local bfsBuffer = context.layoutElementChildrenBuffer
 	local resizableContainerBuffer = context.openLayoutElementStack -- Reuse buffer as scratch
 
@@ -959,6 +1060,15 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 		local root = context.layoutElementTreeRoots.internalArray[rootIndex]
 		local rootElement = context.layoutElements.internalArray + root.layoutElementIndex
 		int32_array_add(bfsBuffer, root.layoutElementIndex)
+		
+		if DEBUG_MODE then
+			print("[SIZE] Processing root " .. rootIndex .. " (element " .. root.layoutElementIndex .. ")")
+			print("[SIZE] Root has " .. rootElement.childrenOrTextContent.children.length .. " children")
+			for ci = 0, rootElement.childrenOrTextContent.children.length - 1 do
+				local childIdx = rootElement.childrenOrTextContent.children.elements[ci]
+				print("[SIZE]   Child " .. ci .. " is element index " .. childIdx)
+			end
+		end
 
 		-- Size floating containers to parent
 		if Clay__ElementHasConfig(rootElement, Clay__ElementConfigType.FLOATING) then
@@ -999,6 +1109,10 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 			local parentIndex = int32_array_get(bfsBuffer, i)
 			local parent = context.layoutElements.internalArray + parentIndex
 			local parentConfig = parent.layoutConfig
+			
+			if DEBUG_MODE then
+				print("[BFS] Processing parent " .. parentIndex .. " (" .. bfsBuffer.length .. " in buffer)")
+			end
 
 			local growContainerCount = 0
 			local parentSize = xAxis and parent.dimensions.width or parent.dimensions.height
@@ -1032,6 +1146,9 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 					not Clay__ElementHasConfig(child, Clay__ElementConfigType.TEXT)
 					and child.childrenOrTextContent.children.length > 0
 				then
+					if DEBUG_MODE then
+						print("[BFS] Adding child " .. childIdx .. " (buffer size: " .. bfsBuffer.length .. "/" .. bfsBuffer.capacity .. ")")
+					end
 					int32_array_add(bfsBuffer, childIdx)
 				end
 
@@ -1282,7 +1399,9 @@ local function Clay__CalculateFinalLayout()
 	for i = 0, context.textElementData.length - 1 do
 		local textData = context.textElementData.internalArray + i
 		local elem = context.layoutElements.internalArray + textData.elementIndex
-		local config = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.TEXT).textElementConfig
+		local textConfigUnion = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.TEXT)
+		if textConfigUnion == nil then goto continue_text_wrap end
+		local config = textConfigUnion.textElementConfig
 		local measured = Clay__MeasureTextCached(textData.text, config)
 
 		local lineWidth = 0
@@ -1331,6 +1450,7 @@ local function Clay__CalculateFinalLayout()
 
 		local wrappedCount = context.wrappedTextLines.length - startWrappedLinesCount
 		elem.dimensions.height = lineHeight * CLAY__MAX(wrappedCount, 1)
+		::continue_text_wrap::
 	end
 
 	-- 3. Aspect Ratio Height
@@ -1876,13 +1996,17 @@ end
 
 function M.initialize(capacity, dims)
 	capacity = capacity or (1024 * 1024 * 16)
-	local memory = ffi.new("uint8_t[?]", capacity)
-	context = ffi.new("Clay_Context")
+	
+	-- ANCHOR THE MEMORY: Prevent GC from reclaiming the arena and context
+	_ANCHORS.arena_memory = ffi.new("uint8_t[?]", capacity)
+	_ANCHORS.context = ffi.new("Clay_Context")
+	
+	context = _ANCHORS.context
 	context.maxElementCount = 8192
 	context.maxMeasureTextCacheWordCount = 16384
 	context.internalArena.capacity = capacity
-	context.internalArena.memory = memory
-	context.internalArena.nextAllocation = ffi.cast("uintptr_t", 0)
+	context.internalArena.memory = ffi.cast("char*", _ANCHORS.arena_memory)
+	context.internalArena.nextAllocation = 0
 	context.layoutDimensions.width = dims and dims.width or 800
 	context.layoutDimensions.height = dims and dims.height or 600
 
@@ -1898,6 +2022,10 @@ function M.initialize(capacity, dims)
 	end
 	context.measureTextHashMapInternal.length = 1
 
+	if DEBUG_MODE then
+		Inspector.validate_pointer(context.internalArena.memory, "Arena Base")
+	end
+
 	return context
 end
 
@@ -1905,7 +2033,10 @@ function M.begin_layout()
 	Clay__InitializeEphemeralMemory(context)
 	context.generation = context.generation + 1
 	next_element_id = 1
-	M.open_element()
+	
+	local rootId = M.Clay__GetElementId("Clay__RootContainer")
+	M.open_element_with_id(rootId)
+	
 	M.configure_open_element(ffi.new("Clay_ElementDeclaration", {
 		layout = ffi.new("Clay_LayoutConfig", {
 			sizing = {
@@ -1930,13 +2061,22 @@ function M.begin_layout()
 			},
 		}),
 	}))
-	context.layoutElementTreeRoots.internalArray[0] = { layoutElementIndex = 0 }
+	
+	-- initialize tree roots - root element is already at index 0 and on the stack
+	local treeRoot = context.layoutElementTreeRoots.internalArray
+	treeRoot[0].layoutElementIndex = 0
+	treeRoot[0].zIndex = 0
 	context.layoutElementTreeRoots.length = 1
 end
 
 function M.end_layout()
 	M.close_element()
 	Clay__CalculateFinalLayout()
+	
+	if DEBUG_MODE then
+		Inspector.check_arena_health()
+	end
+	
 	return context.renderCommands
 end
 
@@ -1954,61 +2094,34 @@ local function Clay__GenerateIdForAnonymousElement(openLayoutElement)
 end
 
 function M.open_element()
-	if context.layoutElements.length >= context.layoutElements.capacity - 1 then
-		return
-	end
-
+	local elemIdx = context.layoutElements.length
 	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
-
-	if context.openLayoutElementStack.length > 0 then
-		local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
-		local parent = context.layoutElements.internalArray + parentIdx
-
-		local elementId = Clay__GenerateIdForAnonymousElement(elem)
-
-		parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
-		int32_array_add(context.layoutElementChildrenBuffer, context.layoutElements.length - 1)
-
-		local clipId = 0
-		if context.openClipElementStack.length > 0 then
-			clipId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
-		end
-		int32_array_set(context.layoutElementClipElementIds, context.layoutElements.length - 1, clipId)
-	else
-		local elementId = Clay__HashString("Clay__RootContainer", 0)
-		elem.id = elementId.id
-		Clay__AddHashMapItem(elementId, elem)
-		array_add(context.layoutElementIdStrings, elementId.stringId)
+	
+	ffi.fill(elem, ffi.sizeof("Clay_LayoutElement"))
+	
+	int32_array_add(context.openLayoutElementStack, elemIdx)
+	
+	if context.openClipElementStack.length > 0 then
+		local clipId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
+		int32_array_set(context.layoutElementClipElementIds, elemIdx, clipId)
 	end
-
-	int32_array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
+	
+	if context.openLayoutElementStack.length > 1 then
+		Clay__GenerateIdForAnonymousElement(elem)
+	end
+	
+	return elem
 end
 
 function M.open_element_with_id(elementId)
-	if context.layoutElements.length >= context.layoutElements.capacity - 1 then
-		return
-	end
-
-	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
+	local elem = M.open_element()
+	local elemIdx = context.layoutElements.length - 1
+	
 	elem.id = elementId.id
-	
-	if context.openLayoutElementStack.length > 0 then
-		local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
-		local parent = context.layoutElements.internalArray + parentIdx
-		
-		parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
-		int32_array_add(context.layoutElementChildrenBuffer, context.layoutElements.length - 1)
-		
-		local clipId = 0
-		if context.openClipElementStack.length > 0 then
-			clipId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
-		end
-		int32_array_set(context.layoutElementClipElementIds, context.layoutElements.length - 1, clipId)
-	end
-	
 	Clay__AddHashMapItem(elementId, elem)
 	array_add(context.layoutElementIdStrings, elementId.stringId)
-	int32_array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
+	
+	return elem
 end
 
 function M.configure_open_element(declaration)
@@ -2016,51 +2129,91 @@ function M.configure_open_element(declaration)
 end
 
 function M.close_element()
-	local idx = int32_array_remove_swapback(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
-	local elem = context.layoutElements.internalArray + idx
-	local config = elem.layoutConfig
+	local closingIdx = int32_array_remove_swapback(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
+	local elem = context.layoutElements.internalArray + closingIdx
+	
+	if DEBUG_MODE then
+		print("[CLOSE] Closing element " .. closingIdx)
+		print("[CLOSE]   Stack before: " .. context.openLayoutElementStack.length .. " elements")
+		print("[CLOSE]   Buffer size before: " .. context.layoutElementChildrenBuffer.length)
+	end
+	
+	if elem.layoutConfig == nil then
+		elem.layoutConfig = context.layoutConfigs.internalArray
+	end
 
-	if
-		context.openClipElementStack.length > 0
-		and (
+	if context.openClipElementStack.length > 0 then
+		if
 			Clay__ElementHasConfig(elem, Clay__ElementConfigType.CLIP)
 			or Clay__ElementHasConfig(elem, Clay__ElementConfigType.FLOATING)
-		)
-	then
-		int32_array_remove_swapback(context.openClipElementStack, context.openClipElementStack.length - 1)
+		then
+			int32_array_remove_swapback(context.openClipElementStack, context.openClipElementStack.length - 1)
+		end
 	end
 
 	local childCount = elem.childrenOrTextContent.children.length
 	if childCount > 0 then
-		elem.childrenOrTextContent.children.elements = context.layoutElementChildren.internalArray
-			+ context.layoutElementChildren.length
+		local baseIdx = context.layoutElementChildren.length
 		for i = 0, childCount - 1 do
 			local childIdx =
 				context.layoutElementChildrenBuffer.internalArray[context.layoutElementChildrenBuffer.length - childCount + i]
+			if DEBUG_MODE then
+				print("[CLOSE]   Adding child " .. i .. " with index " .. childIdx .. " from buffer position " .. (context.layoutElementChildrenBuffer.length - childCount + i))
+			end
 			int32_array_add(context.layoutElementChildren, childIdx)
 		end
+		elem.childrenOrTextContent.children.elements = context.layoutElementChildren.internalArray + baseIdx
 		context.layoutElementChildrenBuffer.length = context.layoutElementChildrenBuffer.length - childCount
-
-		if config.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
-			local w = config.padding.left + config.padding.right
+		
+		if DEBUG_MODE then
+			print("[CLOSE]   Now has " .. childCount .. " children at indices: ")
 			for i = 0, childCount - 1 do
-				local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
-				w = w + child.dimensions.width
+				print("[CLOSE]     [" .. i .. "]=" .. elem.childrenOrTextContent.children.elements[i])
 			end
-			w = w + (CLAY__MAX(childCount - 1, 0) * config.childGap)
-			elem.dimensions.width = w
+		end
+	end
 
-			elem.minDimensions.width = w
+	local config = elem.layoutConfig
+	local padW = config.padding.left + config.padding.right
+	local padH = config.padding.top + config.padding.bottom
+	
+	if config.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
+		elem.dimensions.width = padW
+		for i = 0, childCount - 1 do
+			local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
+			elem.dimensions.width = elem.dimensions.width + child.dimensions.width
+			elem.dimensions.height = CLAY__MAX(elem.dimensions.height, child.dimensions.height + padH)
+		end
+		elem.dimensions.width = elem.dimensions.width + (CLAY__MAX(childCount - 1, 0) * config.childGap)
+	else
+		elem.dimensions.height = padH
+		for i = 0, childCount - 1 do
+			local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
+			elem.dimensions.height = elem.dimensions.height + child.dimensions.height
+			elem.dimensions.width = CLAY__MAX(elem.dimensions.width, child.dimensions.width + padW)
+		end
+		elem.dimensions.height = elem.dimensions.height + (CLAY__MAX(childCount - 1, 0) * config.childGap)
+	end
+
+	if context.openLayoutElementStack.length > 0 then
+		local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
+		local parent = context.layoutElements.internalArray + parentIdx
+		
+		if DEBUG_MODE then
+			print("[CLOSE]   Parent is element " .. parentIdx)
+		end
+
+		if Clay__ElementHasConfig(elem, Clay__ElementConfigType.FLOATING) then
+			parent.floatingChildrenCount = parent.floatingChildrenCount + 1
+			if DEBUG_MODE then
+				print("[CLOSE]   This is a floating child")
+			end
 		else
-			local h = config.padding.top + config.padding.bottom
-			for i = 0, childCount - 1 do
-				local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
-				h = h + child.dimensions.height
+			parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
+			if DEBUG_MODE then
+				print("[CLOSE]   Adding this child to buffer (parent now has " .. parent.childrenOrTextContent.children.length .. " pending children)")
 			end
-			h = h + (CLAY__MAX(childCount - 1, 0) * config.childGap)
-			elem.dimensions.height = h
-
-			elem.minDimensions.height = h
+			int32_array_add(context.layoutElementChildrenBuffer, closingIdx)
 		end
 	end
 
@@ -2100,8 +2253,10 @@ function M.close_element()
 end
 
 function M.set_measure_text(fn)
+	_ANCHORS.callbacks.measure = fn
 	measure_text_fn = fn
 end
+
 function M.set_dimensions(w, h)
 	context.layoutDimensions.width = w
 	context.layoutDimensions.height = h

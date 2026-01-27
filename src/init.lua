@@ -56,6 +56,7 @@ M.AlignY = shell.AlignY
 M.SizingType = shell.SizingType
 M.TextWrap = shell.TextWrap
 M.PointerCapture = shell.PointerCapture
+M.FloatingAttachToElement = shell.FloatingAttachToElement
 
 -- ==================================================================================
 -- Interaction API
@@ -93,6 +94,10 @@ end
 
 function M.sort_z_order()
 	core.sort_roots_by_z()
+end
+
+function M.get_scroll_offset()
+	return core.get_scroll_offset()
 end
 
 -- Pointer Interaction Helpers
