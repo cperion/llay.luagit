@@ -113,10 +113,11 @@ luajit tests/clay_ref/build.lua
 llay/
 ├── clay/              # Clay layout engine (git submodule - reference C impl)
 ├── src/
-│   ├── ffi.lua        # FFI cdef declarations only - copy C structs exactly
+│   ├── clay_ffi.lua   # FFI cdef declarations only - copy C structs exactly
 │   ├── core.lua       # Core layer (C-like, replaces CLAY_IMPLEMENTATION)
 │   ├── shell.lua      # Public shell (declarative DSL API)
 │   └── init.lua       # Main entry point
+├── demo-love2d/       # Love2D demo application
 └── tests/             # Test suite
 ```
 
@@ -341,8 +342,9 @@ luajit tests/run.lua
 **Mock Text Measurement**:
 
 ```lua
+-- Callback receives Lua string (converted from FFI in core)
 -- Deterministic: 10px per char, 20px height
-local function mock_measure_text(text)
+local function mock_measure_text(text, config, userdata)
     return { width = #text * 10, height = 20 }
 end
 ```
