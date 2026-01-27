@@ -84,6 +84,9 @@ local tests = {
 	{ name = "sizing_modes", file = "golden_sizing_modes.txt" },
 	{ name = "child_gap", file = "golden_child_gap.txt" },
 	{ name = "corners_borders", file = "golden_corners_borders.txt" },
+	{ name = "aspect_ratio", file = "golden_aspect_ratio.txt" },
+	{ name = "fit_sizing", file = "golden_fit_sizing.txt" },
+	{ name = "border_between_children", file = "golden_border_between_children.txt" },
 }
 
 for _, test in ipairs(tests) do

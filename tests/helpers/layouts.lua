@@ -173,4 +173,101 @@ layouts.corners_borders = function()
 	return clay.end_layout()
 end
 
+-- Aspect ratio: preserve width/height ratio
+layouts.aspect_ratio = function()
+	clay.set_dimensions(800, 600)
+	clay.begin_layout()
+	clay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = clay.LayoutDirection.LEFT_TO_RIGHT,
+			padding = { 20, 20, 20, 20 },
+			childGap = 20,
+		},
+		backgroundColor = { 255, 255, 255, 255 },
+	}, function()
+		clay.Element({
+			layout = {
+				sizing = {
+					width = 100,
+					height = "FIT",
+				},
+				aspectRatio = 2.0,
+			},
+			backgroundColor = { 255, 0, 0, 255 },
+		})
+	end)
+	return clay.end_layout()
+end
+
+-- Fit sizing: min/max constraints with FIT type
+layouts.fit_sizing = function()
+	clay.set_dimensions(800, 600)
+	clay.begin_layout()
+	clay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = clay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = { 20, 20, 20, 20 },
+			childGap = 10,
+			childAlignment = { clay.AlignX.CENTER },
+		},
+		backgroundColor = { 255, 255, 255, 255 },
+	}, function()
+		clay.Element({
+			layout = {
+				sizing = {
+					width = { min = 200, max = 400 },
+					height = { min = 50, max = 100 },
+					type = "FIT",
+				},
+			},
+			backgroundColor = { 255, 0, 0, 255 },
+		})
+	end)
+	return clay.end_layout()
+end
+
+-- Border between children: spacing with borders
+layouts.border_between_children = function()
+	clay.set_dimensions(800, 600)
+	clay.begin_layout()
+	clay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = clay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = { 50, 50, 50, 50 },
+		},
+		backgroundColor = { 255, 255, 255, 255 },
+	}, function()
+		clay.Element({
+			layout = {
+				sizing = { width = "GROW", height = "GROW" },
+				layoutDirection = clay.LayoutDirection.TOP_TO_BOTTOM,
+				childGap = 0,
+			},
+			backgroundColor = { 240, 240, 240, 255 },
+			border = {
+				color = { 0, 0, 0, 255 },
+				width = { left = 5, right = 5, top = 5, bottom = 5, betweenChildren = 5 }
+			},
+		}, function()
+			clay.Element({
+				layout = {
+					sizing = { width = "GROW", height = 50 },
+				},
+				backgroundColor = { 255, 128, 128, 255 },
+			})
+
+			clay.Element({
+				layout = {
+					sizing = { width = "GROW", height = 50 },
+				},
+				backgroundColor = { 128, 255, 128, 255 },
+			})
+		end)
+	end)
+	return clay.end_layout()
+end
+
 return layouts

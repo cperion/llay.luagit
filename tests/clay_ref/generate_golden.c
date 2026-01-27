@@ -387,6 +387,177 @@ void golden_corners_borders() {
     fclose(f);
 }
 
+void golden_aspect_ratio() {
+    FILE *f = fopen("golden_aspect_ratio.txt", "w");
+    if (!f) return;
+
+    Clay_BeginLayout();
+
+    Clay_ElementDeclaration root = CLAY__DEFAULT_STRUCT;
+    root.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.sizing.height.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.layoutDirection = CLAY_LEFT_TO_RIGHT;
+    root.layout.padding.left = 20;
+    root.layout.padding.right = 20;
+    root.layout.padding.top = 20;
+    root.layout.padding.bottom = 20;
+    root.layout.childGap = 20;
+    root.backgroundColor = (Clay_Color){255, 255, 255, 255};
+
+    Clay__OpenElement();
+    Clay__ConfigureOpenElementPtr(&root);
+
+        Clay_ElementDeclaration child1 = CLAY__DEFAULT_STRUCT;
+        child1.layout.sizing.width.type = CLAY__SIZING_TYPE_FIXED;
+        child1.layout.sizing.width.size.minMax.min = 100;
+        child1.layout.sizing.width.size.minMax.max = 100;
+        child1.layout.sizing.height.type = CLAY__SIZING_TYPE_FIT;
+        child1.aspectRatio.aspectRatio = 2.0f;
+        child1.backgroundColor = (Clay_Color){255, 0, 0, 255};
+
+        Clay__OpenElement();
+        Clay__ConfigureOpenElementPtr(&child1);
+        Clay__CloseElement();
+
+    Clay__CloseElement();
+
+    Clay_RenderCommandArray commands = Clay_EndLayout();
+
+    fprintf(f, "commands_count=%d\n", commands.length);
+    for (int i = 0; i < commands.length; i++) {
+        Clay_RenderCommand cmd = commands.internalArray[i];
+        fprintf(f, "cmd[%d]: id=%u type=%d bbox={x=%f,y=%f,w=%f,h=%f}\n",
+            i, cmd.id, cmd.commandType,
+            cmd.boundingBox.x, cmd.boundingBox.y,
+            cmd.boundingBox.width, cmd.boundingBox.height);
+    }
+
+    fclose(f);
+}
+
+void golden_fit_sizing() {
+    FILE *f = fopen("golden_fit_sizing.txt", "w");
+    if (!f) return;
+
+    Clay_BeginLayout();
+
+    Clay_ElementDeclaration root = CLAY__DEFAULT_STRUCT;
+    root.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.sizing.height.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.layoutDirection = CLAY_TOP_TO_BOTTOM;
+    root.layout.padding.left = 20;
+    root.layout.padding.right = 20;
+    root.layout.padding.top = 20;
+    root.layout.padding.bottom = 20;
+    root.layout.childGap = 10;
+    root.layout.childAlignment.x = CLAY_ALIGN_X_CENTER;
+    root.backgroundColor = (Clay_Color){255, 255, 255, 255};
+
+    Clay__OpenElement();
+    Clay__ConfigureOpenElementPtr(&root);
+
+        Clay_ElementDeclaration child1 = CLAY__DEFAULT_STRUCT;
+        child1.layout.sizing.width.type = CLAY__SIZING_TYPE_FIT;
+        child1.layout.sizing.height.type = CLAY__SIZING_TYPE_FIT;
+        child1.layout.sizing.width.size.minMax.min = 200;
+        child1.layout.sizing.width.size.minMax.max = 400;
+        child1.layout.sizing.height.size.minMax.min = 50;
+        child1.layout.sizing.height.size.minMax.max = 100;
+        child1.backgroundColor = (Clay_Color){255, 0, 0, 255};
+
+        Clay__OpenElement();
+        Clay__ConfigureOpenElementPtr(&child1);
+        Clay__CloseElement();
+
+    Clay__CloseElement();
+
+    Clay_RenderCommandArray commands = Clay_EndLayout();
+
+    fprintf(f, "commands_count=%d\n", commands.length);
+    for (int i = 0; i < commands.length; i++) {
+        Clay_RenderCommand cmd = commands.internalArray[i];
+        fprintf(f, "cmd[%d]: id=%u type=%d bbox={x=%f,y=%f,w=%f,h=%f}\n",
+            i, cmd.id, cmd.commandType,
+            cmd.boundingBox.x, cmd.boundingBox.y,
+            cmd.boundingBox.width, cmd.boundingBox.height);
+    }
+
+    fclose(f);
+}
+
+void golden_border_between_children() {
+    FILE *f = fopen("golden_border_between_children.txt", "w");
+    if (!f) return;
+
+    Clay_BeginLayout();
+
+    Clay_ElementDeclaration root = CLAY__DEFAULT_STRUCT;
+    root.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.sizing.height.type = CLAY__SIZING_TYPE_GROW;
+    root.layout.layoutDirection = CLAY_TOP_TO_BOTTOM;
+    root.layout.padding.left = 50;
+    root.layout.padding.right = 50;
+    root.layout.padding.top = 50;
+    root.layout.padding.bottom = 50;
+    root.backgroundColor = (Clay_Color){255, 255, 255, 255};
+
+    Clay__OpenElement();
+    Clay__ConfigureOpenElementPtr(&root);
+
+        Clay_ElementDeclaration container = CLAY__DEFAULT_STRUCT;
+        container.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+        container.layout.sizing.height.type = CLAY__SIZING_TYPE_GROW;
+        container.layout.layoutDirection = CLAY_TOP_TO_BOTTOM;
+        container.layout.childGap = 0;
+        container.border.width.left = 5;
+        container.border.width.right = 5;
+        container.border.width.top = 5;
+        container.border.width.bottom = 5;
+        container.border.width.betweenChildren = 5;
+        container.border.color = (Clay_Color){0, 0, 0, 255};
+        container.backgroundColor = (Clay_Color){240, 240, 240, 255};
+
+        Clay__OpenElement();
+        Clay__ConfigureOpenElementPtr(&container);
+
+            Clay_ElementDeclaration child1 = CLAY__DEFAULT_STRUCT;
+            child1.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+            child1.layout.sizing.height.type = CLAY__SIZING_TYPE_FIXED;
+            child1.layout.sizing.height.size.minMax.min = 50;
+            child1.layout.sizing.height.size.minMax.max = 50;
+            child1.backgroundColor = (Clay_Color){255, 128, 128, 255};
+            Clay__OpenElement();
+            Clay__ConfigureOpenElementPtr(&child1);
+            Clay__CloseElement();
+
+            Clay_ElementDeclaration child2 = CLAY__DEFAULT_STRUCT;
+            child2.layout.sizing.width.type = CLAY__SIZING_TYPE_GROW;
+            child2.layout.sizing.height.type = CLAY__SIZING_TYPE_FIXED;
+            child2.layout.sizing.height.size.minMax.min = 50;
+            child2.layout.sizing.height.size.minMax.max = 50;
+            child2.backgroundColor = (Clay_Color){128, 255, 128, 255};
+            Clay__OpenElement();
+            Clay__ConfigureOpenElementPtr(&child2);
+            Clay__CloseElement();
+
+        Clay__CloseElement();
+
+    Clay__CloseElement();
+
+    Clay_RenderCommandArray commands = Clay_EndLayout();
+
+    fprintf(f, "commands_count=%d\n", commands.length);
+    for (int i = 0; i < commands.length; i++) {
+        Clay_RenderCommand cmd = commands.internalArray[i];
+        fprintf(f, "cmd[%d]: id=%u type=%d bbox={x=%f,y=%f,w=%f,h=%f}\n",
+            i, cmd.id, cmd.commandType,
+            cmd.boundingBox.x, cmd.boundingBox.y,
+            cmd.boundingBox.width, cmd.boundingBox.height);
+    }
+
+    fclose(f);
+}
+
 int main() {
     size_t arenaSize = 1024 * 1024 * 16;
     char *arenaMemory = malloc(arenaSize);
@@ -407,33 +578,39 @@ int main() {
     
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_simple_row();
     
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_nested_containers();
     
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_alignment_center();
 
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_sizing_modes();
 
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_child_gap();
 
     arena.nextAllocation = sizeof(Clay_Context);
     context->generation++;
-    
     golden_corners_borders();
+
+    arena.nextAllocation = sizeof(Clay_Context);
+    context->generation++;
+    golden_aspect_ratio();
+
+    arena.nextAllocation = sizeof(Clay_Context);
+    context->generation++;
+    golden_fit_sizing();
+
+    arena.nextAllocation = sizeof(Clay_Context);
+    context->generation++;
+    golden_border_between_children();
     
     free(arenaMemory);
     return 0;
