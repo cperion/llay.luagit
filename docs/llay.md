@@ -1,6 +1,6 @@
 # Llay: Lua Layout Engine
 
-> **Note:** This file has been superseded by the consolidated README.md. The content has been merged with docs/lua-as-c.md, docs/porting-guide.md, and docs/testing.md into a single authoritative documentation file in the root. This file is preserved for historical reference only.
+> **Note:** This documentation has been consolidated into the main [README.md](../README.md). Please refer to the README for the most up-to-date documentation. This file is preserved for historical reference.
 
 A LuaJIT rewrite of the Clay layout engine following the "Lua as C" programming discipline.
 

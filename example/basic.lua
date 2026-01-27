@@ -11,13 +11,13 @@ llay.set_dimensions(800, 600)
 
 llay.begin_layout()
 
--- Using declarative API
-llay.Element({
-	layout = {
-		layoutDirection = 0, -- LEFT_TO_RIGHT
-		childGap = 10
-	}
-}, function()
+	-- Using declarative API
+	llay.Element({
+		layout = {
+			layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
+			childGap = 10
+		}
+	}, function()
 	-- Child 1
 	llay.Element({
 		id = "Child1",

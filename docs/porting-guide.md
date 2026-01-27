@@ -1,6 +1,6 @@
 # Porting Clay to LuaJIT
 
-> **Note:** This file has been superseded by the consolidated README.md. The content has been merged with docs/llay.md, docs/lua-as-c.md, and docs/testing.md into a single authoritative documentation file in the root. This file is preserved for historical reference only.
+> **Note:** This documentation has been consolidated into the main [README.md](../README.md). Please refer to the README for the most up-to-date documentation. This file is preserved for historical reference.
 
 Systematic guidelines for porting `clay.h` to LuaJIT using the **Lua-as-C** paradigm. The goal is to minimize translation friction and prevent logical errors from creeping in during the port.
 
