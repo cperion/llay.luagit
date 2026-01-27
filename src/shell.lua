@@ -119,7 +119,12 @@ local function parse_layout_config(tbl)
 		c.layoutDirection = tbl.layoutDirection
 	end
 
-	return c
+	-- Note: aspectRatio is not actually part of Clay_LayoutConfig struct
+	-- It's a field of Clay_ElementDeclaration. We'll handle it separately
+	-- by returning it as a second value
+	local aspectRatio = tbl.aspectRatio or 0
+
+	return c, aspectRatio
 end
 
 local function parse_text_config(tbl)
@@ -196,36 +201,103 @@ local function parse_corner_radius(val)
 end
 
 -- ==================================================================================
+-- ID Helpers (mimic CLAY_ID() macros)
+-- ==================================================================================
+
+-- Standard ID
+function M.ID(str)
+	return core.Clay__GetElementId(str)
+end
+
+-- ID with Index (for loops)
+function M.IDI(str, index)
+	return core.Clay__HashStringWithOffset(str, index, 0)
+end
+
+-- Local ID (scoped to parent)
+function M.ID_LOCAL(str)
+	local parentId = core.get_parent_element_id()
+	return core.Clay__HashStringWithOffset(str, 0, parentId)
+end
+
+-- Local ID with Index
+function M.IDI_LOCAL(str, index)
+	local parentId = core.get_parent_element_id()
+	return core.Clay__HashStringWithOffset(str, index, parentId)
+end
+
+-- ==================================================================================
 -- Element Constructors
 -- ==================================================================================
 
-function M.Element(config, children_fn)
+function M.Element(arg1, arg2, arg3)
+	-- Handle multiple patterns for compatibility:
+	-- 1. CLAY(id, config) { children } -> Element(id, config, children_fn) - C API style
+	-- 2. CLAY(config) { children } -> Element(config, children_fn) - Lua convenience style
+	-- 3. Element(config) -> Element(config) - No children
+	
+	local id = nil
+	local config = nil
+	local children_fn = nil
+	
+	-- Pattern detection
+	if type(arg1) == "table" and arg1.id ~= nil and type(arg1.id) == "number" then
+		-- Pattern 1: First arg is Clay_ElementId
+		id = arg1
+		config = arg2
+		children_fn = arg3
+	elseif type(arg1) == "table" then
+		-- Pattern 2 or 3: First arg is config table
+		config = arg1
+		children_fn = arg2
+	end
+	
+	-- Parse config
 	local declaration = ffi.new("Clay_ElementDeclaration")
+	
+	if config then
+		local layout_config, aspect_ratio = parse_layout_config(config.layout)
+		declaration.layout = layout_config
+		declaration.backgroundColor = parse_color(config.backgroundColor)
+		if config.cornerRadius then
+			declaration.cornerRadius = parse_corner_radius(config.cornerRadius)
+		end
+		if config.border then
+			declaration.border = parse_border_config(config.border)
+		end
+		if config.floating then
+			declaration.floating = parse_floating_config(config.floating)
+		end
 
-	declaration.layout = parse_layout_config(config.layout)
-	declaration.backgroundColor = parse_color(config.backgroundColor)
-	if config.cornerRadius then
-		declaration.cornerRadius = parse_corner_radius(config.cornerRadius)
-	end
-	if config.border then
-		declaration.border = parse_border_config(config.border)
-	end
-	if config.floating then
-		declaration.floating = parse_floating_config(config.floating)
+		if aspect_ratio ~= 0 then
+			declaration.aspectRatio.aspectRatio = aspect_ratio
+		end
+
+		if config.image then
+			declaration.image.imageData = config.image.imageData
+		end
+
+		if config.custom then
+			declaration.custom.customData = config.custom.customData
+		end
+		if config.userData then
+			declaration.userData = config.userData
+		end
+		
+		-- Check if config has an id field (string) - convenience pattern
+		if config.id and type(config.id) == "string" and not id then
+			id = M.ID(config.id)
+		end
 	end
 
-	if config.image then
-		declaration.image.imageData = config.image.imageData
+	-- Open element with or without ID
+	if id then
+		core.open_element_with_id(id)
+		core.configure_open_element(declaration)
+	else
+		core.open_element()
+		core.configure_open_element(declaration)
 	end
-	if config.custom then
-		declaration.custom.customData = config.custom.customData
-	end
-	if config.userData then
-		declaration.userData = config.userData
-	end
-
-	core.open_element()
-	core.configure_open_element(declaration)
 
 	if children_fn then
 		children_fn()
@@ -235,54 +307,9 @@ function M.Element(config, children_fn)
 end
 
 function M.Text(text, config)
-	-- In C: CLAY_TEXT macro calls Clay__OpenTextElement
-	-- We need to manually construct the text element because `core.open_element` is generic.
-
-	local context = core.initialize(nil, nil)
-	local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
-	local parent = context.layoutElements.internalArray + parentIdx
-
-	-- 1. Create Element
-	local elemIdx = context.layoutElements.length
-	if elemIdx >= context.layoutElements.capacity then
-		return
-	end
-	context.layoutElements.length = context.layoutElements.length + 1
-	local elem = context.layoutElements.internalArray + elemIdx
-
-	-- 2. Setup ID (Auto)
-	elem.id = context.layoutElements.length -- Simplified ID generation
-	elem.elementConfigs.length = 0
-	elem.childrenOrTextContent.children.length = 0
-
-	-- 3. Attach Text Config
 	local textCfg = parse_text_config(config or {})
-	local cfgIdx = context.elementConfigs.length
-	context.elementConfigs.length = context.elementConfigs.length + 1
-	local cfg = context.elementConfigs.internalArray + cfgIdx
-	cfg.type = 6 -- TEXT
-	cfg.config.textElementConfig = textCfg
-
-	elem.elementConfigs.internalArray = cfg
-	elem.elementConfigs.length = 1
-
-	-- 4. Attach Text Data
-	local textDataIdx = context.textElementData.length
-	context.textElementData.length = context.textElementData.length + 1
-	local textData = context.textElementData.internalArray + textDataIdx
-
-	textData.text = ffi.new("Clay_String", { length = #text, chars = text, isStaticallyAllocated = true })
-	textData.elementIndex = elemIdx
-	elem.childrenOrTextContent.textElementData = textData
-
-	-- 5. Link to Parent
-	parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
-	-- Add to children buffer (using FFI directly as helper was local in core)
-	local bufIdx = context.layoutElementChildrenBuffer.length
-	context.layoutElementChildrenBuffer.length = context.layoutElementChildrenBuffer.length + 1
-	context.layoutElementChildrenBuffer.internalArray[bufIdx] = elemIdx
-
-	-- Text elements are not pushed to the open stack (they are leaves)
+	-- Use the new core function
+	core.open_text_element(text, textCfg)
 end
 
 return M

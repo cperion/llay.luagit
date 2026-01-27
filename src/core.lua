@@ -39,6 +39,8 @@ local Clay_RenderCommandType = {
 local Clay_TextElementConfigWrapMode = { WORDS = 0, NEWLINES = 1, NONE = 2 }
 local Clay_TextAlignment = { LEFT = 0, CENTER = 1, RIGHT = 2 }
 local Clay_PointerDataInteractionState = { PRESSED_THIS_FRAME = 0, PRESSED = 1, RELEASED_THIS_FRAME = 2, RELEASED = 3 }
+local Clay_PointerCaptureMode = { CAPTURE = 0, PASSTHROUGH = 1 }
+local Clay_FloatingAttachToElement = { NONE = 0, PARENT = 1, ELEMENT_WITH_ID = 2, ROOT = 3 }
 
 local CLAY__SPACECHAR = ffi.new("Clay_String", { length = 1, chars = " " })
 
@@ -78,15 +80,15 @@ end
 
 local function Clay__Array_Allocate_Arena(capacity, item_size, arena)
 	local total_size = capacity * item_size
-	local aligned_ptr = arena.nextAllocation + (64 - (arena.nextAllocation % 64))
-	if (arena.nextAllocation % 64) == 0 then
-		aligned_ptr = arena.nextAllocation
-	end
+	-- Strict 64-byte alignment using bit operations
+	local current_ptr = tonumber(ffi.cast("uintptr_t", arena.nextAllocation))
+	local aligned_ptr = bit.band(current_ptr + 63, bit.bnot(63))
+	
 	local next_alloc = aligned_ptr + total_size
-	if next_alloc > arena.capacity then
-		error("Clay Arena capacity exceeded")
+	if next_alloc > tonumber(arena.capacity) then
+		error("Clay Arena capacity exceeded: Requested " .. total_size .. " at " .. aligned_ptr)
 	end
-	arena.nextAllocation = next_alloc
+	arena.nextAllocation = ffi.cast("uintptr_t", next_alloc)
 	return ffi.cast("void*", arena.memory + aligned_ptr)
 end
 
@@ -246,6 +248,41 @@ local function Clay__HashNumber(offset, seed)
 	return { id = hash + 1, offset = offset, baseId = seed, stringId = { length = 0, chars = nil } }
 end
 
+-- Accurate implementation of Clay's HashStringWithOffset
+local function Clay__HashStringWithOffset(str, offset, seed)
+	local hash = 0
+	local base = seed or 0
+	local len = #str
+
+	for i = 1, len do
+		local c = string.byte(str, i)
+		base = base + c
+		base = (base + bit.lshift(base, 10)) % 4294967296
+		base = bit.bxor(base, bit.rshift(base, 6))
+	end
+	
+	hash = base
+	hash = hash + offset
+	hash = (hash + bit.lshift(hash, 10)) % 4294967296
+	hash = bit.bxor(hash, bit.rshift(hash, 6))
+
+	hash = (hash + bit.lshift(hash, 3)) % 4294967296
+	base = (base + bit.lshift(base, 3)) % 4294967296
+	
+	hash = bit.bxor(hash, bit.rshift(hash, 11))
+	base = bit.bxor(base, bit.rshift(base, 11))
+	
+	hash = (hash + bit.lshift(hash, 15)) % 4294967296
+	base = (base + bit.lshift(base, 15)) % 4294967296
+	
+	return { 
+		id = hash + 1, 
+		offset = offset, 
+		baseId = base + 1, 
+		stringId = { length = len, chars = str } 
+	}
+end
+
 -- ==================================================================================
 -- Context & Initialization
 -- ==================================================================================
@@ -255,7 +292,7 @@ local function Clay__InitializeEphemeralMemory(ctx)
 	local arena = ctx.internalArena
 
 	-- Reset Arena
-	arena.nextAllocation = ctx.arenaResetOffset
+	arena.nextAllocation = ffi.cast("uintptr_t", ctx.arenaResetOffset)
 
 	ctx.layoutElementChildrenBuffer =
 		{ capacity = max, length = 0, internalArray = ffi.cast("int32_t*", Clay__Array_Allocate_Arena(max, 4, arena)) }
@@ -485,7 +522,7 @@ local function Clay__InitializePersistentMemory(ctx)
 		),
 	}
 
-	ctx.arenaResetOffset = arena.nextAllocation
+	ctx.arenaResetOffset = tonumber(arena.nextAllocation)
 end
 
 -- ==================================================================================
@@ -777,16 +814,40 @@ local function Clay__MeasureTextCached(text, config)
 
 	local id = Clay__HashStringContentsWithConfig(text, config)
 	local hashBucket = id % (context.maxMeasureTextCacheWordCount / 32)
+	local elementIndexPrevious = 0
 	local elementIndex = context.measureTextHashMap.internalArray[hashBucket]
 
-	-- Check Cache
+	-- Check Cache with Eviction Logic
 	while elementIndex ~= 0 do
 		local hashEntry = context.measureTextHashMapInternal.internalArray + elementIndex
 		if hashEntry.id == id then
 			hashEntry.generation = context.generation
 			return hashEntry
 		end
-		elementIndex = hashEntry.nextIndex
+
+		-- Eviction Logic: If item is old, free its words and remove from map
+		if context.generation - hashEntry.generation > 2 then
+			local nextWordIdx = hashEntry.measuredWordsStartIndex
+			while nextWordIdx ~= -1 do
+				local word = context.measuredWords.internalArray + nextWordIdx
+				int32_array_add(context.measuredWordsFreeList, nextWordIdx)
+				nextWordIdx = word.next
+			end
+
+			local nextIdx = hashEntry.nextIndex
+			hashEntry.measuredWordsStartIndex = -1
+			int32_array_add(context.measureTextHashMapInternalFreeList, elementIndex)
+			
+			if elementIndexPrevious == 0 then
+				context.measureTextHashMap.internalArray[hashBucket] = nextIdx
+			else
+				context.measureTextHashMapInternal.internalArray[elementIndexPrevious].nextIndex = nextIdx
+			end
+			elementIndex = nextIdx
+		else
+			elementIndexPrevious = elementIndex
+			elementIndex = hashEntry.nextIndex
+		end
 	end
 
 	-- Create New Cache Item
@@ -1211,6 +1272,9 @@ local function Clay__CalculateFinalLayout()
 		return
 	end
 
+	-- 0. Sort roots by Z-index
+	M.sort_roots_by_z()
+
 	-- 1. Size X
 	Clay__SizeContainersAlongAxis(true)
 
@@ -1496,6 +1560,63 @@ local function Clay__CalculateFinalLayout()
 					cmd.userData = sharedConfig and sharedConfig.sharedElementConfig.userData or nil
 					cmd.id = elem.id
 					cmd.commandType = Clay_RenderCommandType.BORDER
+
+					-- Generate between-children borders (as rectangles, not border commands)
+					if borderConfig.width.betweenChildren > 0 and borderConfig.color.a > 0 then
+						local layoutConfig = elem.layoutConfig
+						local halfGap = layoutConfig.childGap / 2
+						local borderOffset = {
+							x = layoutConfig.padding.left - halfGap,
+							y = layoutConfig.padding.top - halfGap
+						}
+
+						local scrollOffset = { x = 0, y = 0 }
+						local clipConfig = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.CLIP)
+						if clipConfig ~= nil then
+							scrollOffset.x = clipConfig.clipElementConfig.scrollOffset.x
+							scrollOffset.y = clipConfig.clipElementConfig.scrollOffset.y
+						end
+
+						if layoutConfig.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
+							for i = 0, elem.childrenOrTextContent.children.length - 1 do
+								local childIdx = elem.childrenOrTextContent.children.elements[i]
+								local child = context.layoutElements.internalArray + childIdx
+								if i > 0 then
+									local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+									cmd.boundingBox = {
+										x = bbox.x + borderOffset.x + scrollOffset.x,
+										y = bbox.y + scrollOffset.y,
+										width = borderConfig.width.betweenChildren,
+										height = elem.dimensions.height
+									}
+									cmd.renderData.rectangle.backgroundColor = borderConfig.color
+									cmd.userData = sharedConfig and sharedConfig.sharedElementConfig.userData or nil
+									cmd.id = Clay__HashNumber(elem.id, elem.childrenOrTextContent.children.length + 1 + i).id
+									cmd.commandType = Clay_RenderCommandType.RECTANGLE
+								end
+								borderOffset.x = borderOffset.x + child.dimensions.width + layoutConfig.childGap
+							end
+						else -- TOP_TO_BOTTOM
+							for i = 0, elem.childrenOrTextContent.children.length - 1 do
+								local childIdx = elem.childrenOrTextContent.children.elements[i]
+								local child = context.layoutElements.internalArray + childIdx
+								if i > 0 then
+									local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+									cmd.boundingBox = {
+										x = bbox.x + scrollOffset.x,
+										y = bbox.y + borderOffset.y + scrollOffset.y,
+										width = elem.dimensions.width,
+										height = borderConfig.width.betweenChildren
+									}
+									cmd.renderData.rectangle.backgroundColor = borderConfig.color
+									cmd.userData = sharedConfig and sharedConfig.sharedElementConfig.userData or nil
+									cmd.id = Clay__HashNumber(elem.id, elem.childrenOrTextContent.children.length + 1 + i).id
+									cmd.commandType = Clay_RenderCommandType.RECTANGLE
+								end
+								borderOffset.y = borderOffset.y + child.dimensions.height + layoutConfig.childGap
+							end
+						end
+					end
 				end
 			end
 
@@ -1761,7 +1882,7 @@ function M.initialize(capacity, dims)
 	context.maxMeasureTextCacheWordCount = 16384
 	context.internalArena.capacity = capacity
 	context.internalArena.memory = memory
-	context.internalArena.nextAllocation = 0
+	context.internalArena.nextAllocation = ffi.cast("uintptr_t", 0)
 	context.layoutDimensions.width = dims and dims.width or 800
 	context.layoutDimensions.height = dims and dims.height or 600
 
@@ -1863,6 +1984,33 @@ function M.open_element()
 	int32_array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
 end
 
+function M.open_element_with_id(elementId)
+	if context.layoutElements.length >= context.layoutElements.capacity - 1 then
+		return
+	end
+
+	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
+	elem.id = elementId.id
+	
+	if context.openLayoutElementStack.length > 0 then
+		local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
+		local parent = context.layoutElements.internalArray + parentIdx
+		
+		parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
+		int32_array_add(context.layoutElementChildrenBuffer, context.layoutElements.length - 1)
+		
+		local clipId = 0
+		if context.openClipElementStack.length > 0 then
+			clipId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
+		end
+		int32_array_set(context.layoutElementClipElementIds, context.layoutElements.length - 1, clipId)
+	end
+	
+	Clay__AddHashMapItem(elementId, elem)
+	array_add(context.layoutElementIdStrings, elementId.stringId)
+	int32_array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
+end
+
 function M.configure_open_element(declaration)
 	Clay__ConfigureOpenElement(declaration)
 end
@@ -1957,6 +2105,270 @@ end
 function M.set_dimensions(w, h)
 	context.layoutDimensions.width = w
 	context.layoutDimensions.height = h
+end
+
+-- ==================================================================================
+-- INTERACTION SYSTEM
+-- ==================================================================================
+
+function M.point_is_inside_rect(point, rect)
+	return point.x >= rect.x and point.x <= rect.x + rect.width and 
+		   point.y >= rect.y and point.y <= rect.y + rect.height
+end
+
+function M.set_pointer_state(position, isPointerDown)
+	if context.booleanWarnings.maxElementsExceeded then return end
+	
+	context.pointerInfo.position = position
+	context.pointerOverIds.length = 0
+	
+	local dfsBuffer = context.layoutElementChildrenBuffer
+	
+	-- Iterate roots in reverse (top-most first)
+	for rootIndex = context.layoutElementTreeRoots.length - 1, 0, -1 do
+		dfsBuffer.length = 0
+		local root = context.layoutElementTreeRoots.internalArray[rootIndex]
+		int32_array_add(dfsBuffer, root.layoutElementIndex)
+		
+		-- Reset visited for this root path
+		for i=0, context.maxElementCount-1 do context.treeNodeVisited.internalArray[i] = false end
+		
+		local found = false
+		while dfsBuffer.length > 0 do
+			local idx = dfsBuffer.length - 1
+			if context.treeNodeVisited.internalArray[idx] then
+				dfsBuffer.length = dfsBuffer.length - 1
+			else
+				context.treeNodeVisited.internalArray[idx] = true
+				local elementIndex = int32_array_get(dfsBuffer, idx)
+				local currentElement = context.layoutElements.internalArray + elementIndex
+				local mapItem = Clay__GetHashMapItem(currentElement.id)
+				
+				if mapItem then
+					local elementBox = ffi.new("Clay_BoundingBox", mapItem.boundingBox)
+					elementBox.x = elementBox.x - root.pointerOffset.x
+					elementBox.y = elementBox.y - root.pointerOffset.y
+					
+					local clipId = context.layoutElementClipElementIds.internalArray[elementIndex]
+					local clipItem = clipId ~= 0 and Clay__GetHashMapItem(clipId) or nil
+					
+					local isInside = M.point_is_inside_rect(position, elementBox)
+					local isNotClipped = not clipItem or M.point_is_inside_rect(position, clipItem.boundingBox)
+					
+					if isInside and (isNotClipped or context.externalScrollHandlingEnabled) then
+						if mapItem.onHoverFunction ~= nil then
+							mapItem.onHoverFunction(mapItem.elementId, context.pointerInfo, mapItem.hoverFunctionUserData)
+						end
+						element_id_array_add(context.pointerOverIds, mapItem.elementId)
+						found = true
+					end
+					
+					-- Push children if not text
+					if not Clay__ElementHasConfig(currentElement, Clay__ElementConfigType.TEXT) then
+						for i = currentElement.childrenOrTextContent.children.length - 1, 0, -1 do
+							int32_array_add(dfsBuffer, currentElement.childrenOrTextContent.children.elements[i])
+						end
+					end
+				end
+			end
+		end
+		
+		local rootElement = context.layoutElements.internalArray + root.layoutElementIndex
+		local floatConfig = Clay__FindElementConfigWithType(rootElement, Clay__ElementConfigType.FLOATING)
+		if found and floatConfig and floatConfig.floatingElementConfig.pointerCaptureMode == Clay_PointerCaptureMode.CAPTURE then
+			break
+		end
+	end
+
+	-- Update interaction state machine
+	local state = context.pointerInfo.state
+	if isPointerDown then
+		if state == Clay_PointerDataInteractionState.PRESSED_THIS_FRAME or state == Clay_PointerDataInteractionState.PRESSED then
+			context.pointerInfo.state = Clay_PointerDataInteractionState.PRESSED
+		else
+			context.pointerInfo.state = Clay_PointerDataInteractionState.PRESSED_THIS_FRAME
+		end
+	else
+		if state == Clay_PointerDataInteractionState.RELEASED_THIS_FRAME or state == Clay_PointerDataInteractionState.RELEASED then
+			context.pointerInfo.state = Clay_PointerDataInteractionState.RELEASED
+		else
+			context.pointerInfo.state = Clay_PointerDataInteractionState.RELEASED_THIS_FRAME
+		end
+	end
+end
+
+-- ==================================================================================
+-- SCROLL SYSTEM
+-- ==================================================================================
+
+function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
+	local isPointerActive = enableDragScrolling and (context.pointerInfo.state <= 1) -- PRESSED_THIS_FRAME or PRESSED
+	local highestPriorityScrollData = nil
+	
+	for i = 0, context.scrollContainerDatas.length - 1 do
+		local scrollData = context.scrollContainerDatas.internalArray + i
+		if not scrollData.openThisFrame then goto next_scroll end
+		
+		scrollData.openThisFrame = false
+		local hashMapItem = Clay__GetHashMapItem(scrollData.elementId)
+		if not hashMapItem then goto next_scroll end
+
+		-- Momentum Logic
+		if not isPointerActive and scrollData.pointerScrollActive then
+			scrollData.scrollMomentum.x = (scrollData.scrollPosition.x - scrollData.scrollOrigin.x) / (scrollData.momentumTime * 25)
+			scrollData.scrollMomentum.y = (scrollData.scrollPosition.y - scrollData.scrollOrigin.y) / (scrollData.momentumTime * 25)
+			scrollData.pointerScrollActive = false
+		end
+
+		-- Apply Friction
+		scrollData.scrollPosition.x = scrollData.scrollPosition.x + scrollData.scrollMomentum.x
+		scrollData.scrollMomentum.x = scrollData.scrollMomentum.x * 0.95
+		scrollData.scrollPosition.y = scrollData.scrollPosition.y + scrollData.scrollMomentum.y
+		scrollData.scrollMomentum.y = scrollData.scrollMomentum.y * 0.95
+
+		-- Find if pointer is over this container
+		for j = 0, context.pointerOverIds.length - 1 do
+			if scrollData.elementId == context.pointerOverIds.internalArray[j].id then
+				highestPriorityScrollData = scrollData
+			end
+		end
+		::next_scroll::
+	end
+
+	if highestPriorityScrollData then
+		local scrollElement = highestPriorityScrollData.layoutElement
+		local clip = Clay__FindElementConfigWithType(scrollElement, Clay__ElementConfigType.CLIP).clipElementConfig
+		
+		-- Wheel Scroll
+		if clip.vertical then
+			highestPriorityScrollData.scrollPosition.y = highestPriorityScrollData.scrollPosition.y + scrollDelta.y * 10
+		end
+		if clip.horizontal then
+			highestPriorityScrollData.scrollPosition.x = highestPriorityScrollData.scrollPosition.x + scrollDelta.x * 10
+		end
+
+		-- Drag Scroll
+		if isPointerActive then
+			if not highestPriorityScrollData.pointerScrollActive then
+				highestPriorityScrollData.pointerOrigin = context.pointerInfo.position
+				highestPriorityScrollData.scrollOrigin = highestPriorityScrollData.scrollPosition
+				highestPriorityScrollData.pointerScrollActive = true
+				highestPriorityScrollData.momentumTime = 0
+			else
+				if clip.horizontal then
+					highestPriorityScrollData.scrollPosition.x = highestPriorityScrollData.scrollOrigin.x + (context.pointerInfo.position.x - highestPriorityScrollData.pointerOrigin.x)
+				end
+				if clip.vertical then
+					highestPriorityScrollData.scrollPosition.y = highestPriorityScrollData.scrollOrigin.y + (context.pointerInfo.position.y - highestPriorityScrollData.pointerOrigin.y)
+				end
+				highestPriorityScrollData.momentumTime = highestPriorityScrollData.momentumTime + deltaTime
+			end
+		end
+
+		-- Clamp
+		local maxScrollX = -CLAY__MAX(highestPriorityScrollData.contentSize.width - scrollElement.dimensions.width, 0)
+		local maxScrollY = -CLAY__MAX(highestPriorityScrollData.contentSize.height - scrollElement.dimensions.height, 0)
+		highestPriorityScrollData.scrollPosition.x = CLAY__MAX(CLAY__MIN(highestPriorityScrollData.scrollPosition.x, 0), maxScrollX)
+		highestPriorityScrollData.scrollPosition.y = CLAY__MAX(CLAY__MIN(highestPriorityScrollData.scrollPosition.y, 0), maxScrollY)
+	end
+end
+
+-- ==================================================================================
+-- FLOATING & Z-SORT
+-- ==================================================================================
+
+function M.sort_roots_by_z()
+	local count = context.layoutElementTreeRoots.length
+	if count <= 1 then return end
+	-- Stable Bubble Sort for small number of roots (common in UI)
+	local sorted = false
+	while not sorted do
+		sorted = true
+		for i = 0, count - 2 do
+			local current = context.layoutElementTreeRoots.internalArray[i]
+			local next = context.layoutElementTreeRoots.internalArray[i+1]
+			if next.zIndex < current.zIndex then
+				local tmp = ffi.new("Clay__LayoutElementTreeRoot", current)
+				context.layoutElementTreeRoots.internalArray[i] = next
+				context.layoutElementTreeRoots.internalArray[i+1] = tmp
+				sorted = false
+			end
+		end
+	end
+end
+
+-- Helper functions for public API
+function M.open_text_element(text, textConfig)
+	if context.layoutElements.length >= context.layoutElements.capacity - 1 then return end
+	
+	local parent = Clay__GetOpenLayoutElement()
+	local elemIdx = context.layoutElements.length
+	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
+	
+	-- Hash ID based on parent + child index
+	local elementId = Clay__HashNumber(parent.childrenOrTextContent.children.length + parent.floatingChildrenCount, parent.id)
+	elem.id = elementId.id
+	Clay__AddHashMapItem(elementId, elem)
+	
+	-- Measure
+	local clayString = ffi.new("Clay_String", { length = #text, chars = text, isStaticallyAllocated = true })
+	local measured = Clay__MeasureTextCached(clayString, textConfig)
+	
+	elem.dimensions.width = measured.unwrappedDimensions.width
+	elem.dimensions.height = textConfig.lineHeight > 0 and textConfig.lineHeight or measured.unwrappedDimensions.height
+	elem.minDimensions.width = measured.minWidth
+	elem.minDimensions.height = elem.dimensions.height
+	
+	local textData = array_add(context.textElementData, ffi.new("Clay__TextElementData"))
+	textData.text = clayString
+	textData.preferredDimensions = measured.unwrappedDimensions
+	textData.elementIndex = elemIdx
+	elem.childrenOrTextContent.textElementData = textData
+	
+	-- Configs
+	elem.elementConfigs.internalArray = array_add(context.elementConfigs, {
+		type = Clay__ElementConfigType.TEXT,
+		config = { textElementConfig = textConfig }
+	})
+	elem.elementConfigs.length = 1
+	
+	-- Parent link
+	parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
+	int32_array_add(context.layoutElementChildrenBuffer, elemIdx)
+end
+
+function M.pointer_over(id)
+	for i=0, context.pointerOverIds.length-1 do
+		if context.pointerOverIds.internalArray[i].id == id then return true end
+	end
+	return false
+end
+
+function M.get_parent_element_id()
+	if context.openLayoutElementStack.length < 2 then
+		return 0
+	end
+	-- The element currently being configured is at the top. 
+	-- Its parent is one level down in the stack.
+	local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 2]
+	return context.layoutElements.internalArray[parentIdx].id
+end
+
+function M.Clay__GetElementId(str)
+	return Clay__HashString(str, 0)
+end
+
+function M.Clay__HashStringWithOffset(str, offset, seed)
+	return Clay__HashStringWithOffset(str, offset, seed)
+end
+
+-- Internal functions for interaction API
+function M._get_open_element()
+	return Clay__GetOpenLayoutElement()
+end
+
+function M._get_hash_map_item(id)
+	return Clay__GetHashMapItem(id)
 end
 
 return M

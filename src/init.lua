@@ -44,6 +44,8 @@ M.Element = shell.Element
 -- Maps to CLAY_TEXT(...) macro
 M.Text = shell.Text
 
+
+
 -- ==================================================================================
 -- Constants & Enums
 -- ==================================================================================
@@ -54,6 +56,57 @@ M.AlignY = shell.AlignY
 M.SizingType = shell.SizingType
 M.TextWrap = shell.TextWrap
 M.PointerCapture = shell.PointerCapture
+
+-- ==================================================================================
+-- Interaction API
+-- ==================================================================================
+
+function M.set_pointer_state(x, y, is_down)
+	core.set_pointer_state({x = x, y = y}, is_down)
+end
+
+function M.update_scroll_containers(enable_drag, dx, dy, dt)
+	core.update_scroll_containers(enable_drag, {x = dx, y = dy}, dt)
+end
+
+function M.pointer_over(id_string)
+	local id = core.Clay__GetElementId(id_string)
+	return core.pointer_over(id.id)
+end
+
+-- Hashing helper for IDs
+function M.ID(str)
+	return core.Clay__GetElementId(str)
+end
+
+function M.IDI(str, index)
+	return shell.IDI(str, index)
+end
+
+function M.ID_LOCAL(str)
+	return shell.ID_LOCAL(str)
+end
+
+function M.IDI_LOCAL(str, index)
+	return shell.IDI_LOCAL(str, index)
+end
+
+function M.sort_z_order()
+	core.sort_roots_by_z()
+end
+
+-- Pointer Interaction Helpers
+function M.on_hover(fn, userData)
+	-- This allows: llay.on_hover(function(id, pointer, data) ... end, myData)
+	local openElement = core._get_open_element()
+	if openElement then
+		local hashMapItem = core._get_hash_map_item(openElement.id)
+		if hashMapItem then
+			hashMapItem.onHoverFunction = fn
+			hashMapItem.hoverFunctionUserData = userData
+		end
+	end
+end
 
 -- ==================================================================================
 -- Debug / Internals

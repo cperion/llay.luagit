@@ -19,15 +19,9 @@
 - Use pointers explicitly for mutable state
 - No allocations in hot paths (no tables, closures, string manipulation in loops)
 
-**Track Progress** - Always update `tasks.md` after completing features:
-
 1. Mark completed items with `[x]`
 2. Add summary at top with progress percentages
 3. Note recent commits for reference
-
-> ⚠️ **IMPORTANT FOR AGENTS**:
-> - `tasks.md` tracks overall project phases (Phase 1, 2, 3, etc.) - update it after features
-> - `todoread`/`todowrite` tools are for internal session tracking only
 
 **Commit regularly** - After completing a feature, commit with a descriptive message.
 
@@ -41,6 +35,7 @@ git commit -m "type(scope): description"
 Format: `type[optional scope]: <description>`
 
 **Common types:**
+
 - `feat` - New feature (correlates with MINOR in SemVer)
 - `fix` - Bug fix (correlates with PATCH in SemVer)
 - `docs` - Documentation changes
@@ -51,6 +46,7 @@ Format: `type[optional scope]: <description>`
 - `style` - Code style/formatting changes
 
 **Examples:**
+
 - `feat(core): add layout calculation engine`
 - `fix(ffi): correct Clay_Arena struct definition`
 - `docs(AGENTS): add commit workflow section`
@@ -58,6 +54,7 @@ Format: `type[optional scope]: <description>`
 - `chore: update AGENTS.md with conventional commits spec`
 
 **Breaking changes:**
+
 - Add `!` after type/scope: `feat(api)!: breaking API change`
 - Or add footer: `BREAKING CHANGE: <description>`
 
@@ -66,6 +63,7 @@ Format: `type[optional scope]: <description>`
 Llay is a LuaJIT rewrite of the Clay layout engine following the "Lua-as-C" programming discipline. This achieves near-C performance through data-oriented design, explicit memory management, and minimal GC pressure.
 
 **Architecture**: C-core, Meta-shell
+
 - **Core layer**: cdata arrays/structs, index-based loops, explicit memory management (C-like)
 - **Shell layer**: declarative DSL, ergonomic APIs, safety checks (Lua-like)
 
@@ -92,6 +90,7 @@ luajit tests/clay_ref/build.lua
 ### Core Principles
 
 **C-Core (Hot Path) Rules**:
+
 - Use cdata arrays/structs for all persistent state
 - Zero-based indexing for all cdata arrays: `for i = 0, count - 1 do ... end`
 - Integer IDs and numeric enums - no strings in hot paths
@@ -102,6 +101,7 @@ luajit tests/clay_ref/build.lua
 - No `ffi.new` in inner loops
 
 **Shell (Boundary) Rules**:
+
 - Metatables, metatypes, views/proxies allowed
 - Table-based configuration and DSLs
 - Validation, asserts, rich error messages
@@ -142,12 +142,14 @@ local band, bor = bit.band, bit.bor
 ### Type Translation from C to Lua
 
 **Structs**: Copy exactly from clay.h to ffi.lua
+
 ```c
 // C
 typedef struct {
     float width, height;
 } Clay_Dimensions;
 ```
+
 ```lua
 -- Lua (ffi.lua)
 ffi.cdef[[
@@ -158,10 +160,12 @@ typedef struct {
 ```
 
 **Enums**: Convert to constant tables (not enums)
+
 ```c
 // C
 typedef enum { CLAY_LEFT_TO_RIGHT, CLAY_TOP_TO_BOTTOM } Clay_LayoutDirection;
 ```
+
 ```lua
 -- Lua (core.lua)
 local Clay_LayoutDirection = {
@@ -173,7 +177,9 @@ local Clay_LayoutDirection = {
 **Unions**: Keep anonymous unions as-is in cdef - LuaJIT supports them
 
 **Pointers**: Explicitly use pointers for mutable state
+
 - Pass pointers to functions, not
+
 ```lua
 local config_ptr = ffi.cast("Clay_LayoutConfig*", arena_ptr)
 ```
@@ -181,6 +187,7 @@ local config_ptr = ffi.cast("Clay_LayoutConfig*", arena_ptr)
 ### Code Style Rules
 
 **Loops**:
+
 ```lua
 -- Core (0-based, always)
 for i = 0, count - 1 do end
@@ -189,6 +196,7 @@ for i = 0, count - 1 do end
 ```
 
 **Boolean Logic**:
+
 ```lua
 -- C: if (element->childrenCount) { ... }
 -- Lua (be explicit)
@@ -200,6 +208,7 @@ if pointer == nil then ... end
 ```
 
 **Macros to Functions**:
+
 ```lua
 -- C: CLAY__MAX(x, y)
 -- Lua
@@ -211,11 +220,13 @@ local min, max = math.min, math.max
 ```
 
 **String Handling**:
+
 - Keep as Clay_String structs internally: `{ length, chars* }`
 - Convert Lua string to C string: `ffi.cast("const char*", str)`
 - String equality: use memcmp helper or `ffi.string` for hashing
 
 **Pointer Arithmetic**:
+
 ```lua
 -- C: char *chars = buffer->internalArray + buffer->length;
 -- Lua (ensure variable is typed pointer)
@@ -225,6 +236,7 @@ local chars = buffer.internalArray + buffer.length
 ### Memory Management
 
 **Arena Allocation**:
+
 ```lua
 -- Preallocate
 local MAX_MEMORY = 1024 * 1024
@@ -248,6 +260,7 @@ end
 ```
 
 **Arrays**: Write specific init functions, don't use generators
+
 ```lua
 -- Pattern: slice from arena
 local function allocate_array(capacity, element_type)
@@ -260,10 +273,12 @@ end
 ### Error Handling
 
 **Core functions**: Assume valid inputs (shell validates)
+
 - No error checking in hot paths
 - Use assertions in debug mode
 
 **Shell functions**: Validate all inputs
+
 ```lua
 function shell.element(config)
     if type(config) ~= "table" then
@@ -282,6 +297,7 @@ end
 ### Declarative Shell API Patterns
 
 **Polymorphic Arguments**:
+
 ```lua
 function Element(arg)
     local config_ptr
@@ -302,6 +318,7 @@ end
 ```
 
 **Fluent Builder Pattern** (for zero-GC in hot paths):
+
 ```lua
 llay.box()
     :id("Sidebar")
@@ -322,6 +339,7 @@ luajit tests/run.lua
 ```
 
 **Mock Text Measurement**:
+
 ```lua
 -- Deterministic: 10px per char, 20px height
 local function mock_measure_text(text)
@@ -330,6 +348,7 @@ end
 ```
 
 **Float Comparison Epsilon**:
+
 ```lua
 local EPSILON = 0.0001
 local function float_eq(a, b)
@@ -426,6 +445,7 @@ luajit tests/run.lua
 ## Documentation
 
 Comprehensive documentation is available in README.md, which consolidates all project documentation including:
+
 - Project overview and declarative shell API usage
 - "Lua as C" programming model: architecture philosophy, C-core vs Shell layer separation, performance patterns
 - Systematic guidelines for porting clay.h to LuaJIT with type translation rules and workflow checklist
