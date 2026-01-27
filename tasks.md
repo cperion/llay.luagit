@@ -5,6 +5,18 @@
 - **Philosophy:** [docs/lua-as-c.md](docs/lua-as-c.md) (0-based indexing, FFI structs, no GC in hot paths)
 - **Porting Rules:** [docs/porting-guide.md](docs/porting-guide.md)
 
+**Recent Progress:**
+- `fix(tools): support CLAY_PACKED_ENUM macro-based type definitions` (e8042c9)
+- `feat(ffi): add missing type definitions for text and layout` (a4f7722)
+
+**Summary:**
+- Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
+- Phase 2 (Core Infrastructure): ~60% complete (hashmap items pending)
+- Phase 3 (Layout Algorithms): Not started
+- Phase 4 (Rendering): Not started
+- Phase 5 (Shell API): ~60% complete (helpers pending)
+- Phase 6 (Verification): ~50% complete (complex tests pending)
+
 ## Phase 1: FFI Definitions (`src/clay_ffi.lua`)
 
 Use `tools/seek show <Name>` to extract these from `clay.h`. This is the primary method for exploring clay.h—direct file reading is a fallback.
@@ -13,24 +25,24 @@ Use `tools/seek show <Name>` to extract these from `clay.h`. This is the primary
     - [x] `Clay_Vector2`, `Clay_Dimensions`, `Clay_BoundingBox`
     - [x] `Clay_Color`, `Clay_String`, `Clay_StringSlice`
     - [x] `Clay_Arena`
-- [ ] **Enums** (Convert to `local Enum = { A = 0, B = 1 }`)
-    - [x] `Clay_LayoutDirection`
-    - [x] `Clay__SizingType`
-    - [ ] `Clay_TextElementConfigWrapMode`
-    - [ ] `Clay_TextAlignment`
-    - [ ] `Clay_FloatingAttachPointType`, `Clay_PointerCaptureMode`, `Clay_FloatingAttachToElement`
+ - [x] **Enums** (Convert to `local Enum = { A = 0, B = 1 }`)
+     - [x] `Clay_LayoutDirection`
+     - [x] `Clay__SizingType`
+     - [x] `Clay_TextElementConfigWrapMode`
+     - [x] `Clay_TextAlignment`
+     - [ ] `Clay_FloatingAttachPointType`, `Clay_PointerCaptureMode`, `Clay_FloatingAttachToElement`, `Clay_FloatingClipToElement`
 - [ ] **Config Structs**
     - [x] `Clay_Sizing`, `Clay_Padding`, `Clay_LayoutConfig`
     - [x] `Clay_TextElementConfig`
     - [x] `Clay_ImageElementConfig`, `Clay_FloatingElementConfig`
     - [x] `Clay_CustomElementConfig`, `Clay_BorderElementConfig`, `Clay_SharedElementConfig`
-- [ ] **Internal Structs**
-    - [x] `Clay_LayoutElement` (Complex nested unions - check `clay_ffi.lua` matches `clay.h`)
-    - [x] `Clay_RenderCommand`
-    - [ ] `Clay__MeasuredWord` (Text measurement caching)
-    - [ ] `Clay__MeasureTextCacheItem`
-    - [ ] `Clay_LayoutElementHashMapItem`
-    - [ ] `Clay__ScrollContainerDataInternal`
+ - [x] **Internal Structs**
+     - [x] `Clay_LayoutElement` (Complex nested unions - check `clay_ffi.lua` matches `clay.h`)
+     - [x] `Clay_RenderCommand`
+     - [x] `Clay__MeasuredWord` (Text measurement caching)
+     - [x] `Clay__MeasureTextCacheItem`
+     - [x] `Clay_LayoutElementHashMapItem`
+     - [x] `Clay__ScrollContainerDataInternal`
 - [ ] **Context**
     - [x] `Clay_Context` struct definition (Must match `clay.h` context exactly for memory layout)
 
@@ -41,17 +53,17 @@ Implementation of the memory management and basic data structures.
 - [x] **Memory Arena**
     - [x] `Clay__Array_Allocate_Arena` (Generic allocator for arrays)
     - [x] `Clay_CreateArenaWithCapacityAndMemory` equivalent (`M.initialize`)
-- [ ] **Arrays** (Port `CLAY__ARRAY_DEFINE` macros manually)
-    - [x] `Clay_LayoutElementArray`
-    - [x] `Clay_RenderCommandArray`
-    - [ ] `Clay__int32_tArray` (Add utility: `add`, `get`, `set`, `remove_swapback`)
-    - [ ] `Clay__StringArray`
-    - [ ] `Clay__WrappedTextLineArray`
-    - [ ] `Clay__MeasureTextCacheItemArray`
-- [ ] **HashMap Logic**
-    - [ ] `Clay__HashString` (Port hash algorithm)
-    - [ ] `Clay__AddHashMapItem` (Collision handling logic)
-    - [ ] `Clay__GetHashMapItem`
+ - [x] **Arrays** (Port `CLAY__ARRAY_DEFINE` macros manually)
+     - [x] `Clay_LayoutElementArray`
+     - [x] `Clay_RenderCommandArray`
+     - [x] `Clay__int32_tArray` (Utility: `add`, `get`, `set`, `remove_swapback`)
+     - [x] `Clay__StringArray`
+     - [x] `Clay__WrappedTextLineArray`
+     - [x] `Clay__MeasureTextCacheItemArray`
+ - [x] **HashMap Logic**
+     - [x] `Clay__HashString` (Port hash algorithm - DJB2 hash at core.lua:307-317)
+     - [ ] `Clay__AddHashMapItem` (Collision handling logic)
+     - [ ] `Clay__GetHashMapItem`
 - [ ] **Element Management**
     - [x] `Clay__OpenElement`
     - [x] `Clay__CloseElement`
