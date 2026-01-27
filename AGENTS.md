@@ -9,7 +9,7 @@
 3. Add new test files to `tests/` when testing new features
 4. Mock external dependencies in `tests/helpers/mock.lua`
 
-**Follow Porting Guidelines** - Always adhere to `docs/porting-guide.md` when porting from clay.h:
+**Read Porting Guidelines** - **MUST READ** `docs/porting-guide.md` before any porting work:
 
 - Use `tools/seek` to explore clay.h (primary method, direct reading is fallback)
 - Follow 0-based indexing in Core (never convert to 1-based)
