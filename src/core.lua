@@ -2460,10 +2460,16 @@ function M.open_text_element(text, textConfig)
 	local elemIdx = context.layoutElements.length
 	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
 	
+	-- Zero memory to prevent garbage in elementConfigs.length
+	ffi.fill(elem, ffi.sizeof("Clay_LayoutElement"))
+	
 	-- Hash ID based on parent + child index
 	local elementId = Clay__HashNumber(parent.childrenOrTextContent.children.length + parent.floatingChildrenCount, parent.id)
 	elem.id = elementId.id
 	Clay__AddHashMapItem(elementId, elem)
+	
+	-- Set default layout config
+	elem.layoutConfig = context.layoutConfigs.internalArray
 	
 	-- Measure
 	local clayString = ffi.new("Clay_String", { length = #text, chars = text, isStaticallyAllocated = true })
