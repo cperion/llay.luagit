@@ -503,6 +503,12 @@ typedef struct {
     int32_t capacity;
     int32_t length;
     Clay_LayoutElementHashMapItem *internalArray;
+} Clay__LayoutElementHashMapItemArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_LayoutElementHashMapItem *internalArray;
 } Clay_LayoutElementHashMapArray;
 
 typedef struct {
@@ -547,6 +553,8 @@ struct Clay_Context {
     Clay__WrappedTextLineArray wrappedTextLines;
     Clay__boolArray treeNodeVisited;
     Clay__charArray dynamicStringData;
+    Clay__LayoutElementHashMapItemArray layoutElementsHashMapInternal;
+    Clay__int32_tArray layoutElementsHashMap;
 };
 
 Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity, void *memory);

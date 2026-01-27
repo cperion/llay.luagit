@@ -57,6 +57,107 @@ local function array_add(array, item)
     return array.internalArray[array.length - 1]
 end
 
+local function array_set(array, index, value)
+    if index < 0 or index >= array.capacity then
+        error("Array index out of bounds for set")
+    end
+    if index >= array.length then
+        array.length = index + 1
+    end
+    array.internalArray[index] = value
+end
+
+local function array_remove_swapback(array, index)
+    if index < 0 or index >= array.length then
+        error("Array index out of bounds for remove")
+    end
+    array.length = array.length - 1
+    if index < array.length then
+        array.internalArray[index] = array.internalArray[array.length]
+    end
+end
+
+local function Clay__int32_tArray_Add(array, value)
+    return array_add(array, value)
+end
+
+local function Clay__int32_tArray_Get(array, index)
+    return array_get(array, index)
+end
+
+local function Clay__int32_tArray_Set(array, index, value)
+    return array_set(array, index, value)
+end
+
+local function Clay__int32_tArray_RemoveSwapback(array, index)
+    return array_remove_swapback(array, index)
+end
+
+local function Clay__AddHashMapItem(elementId, layoutElement)
+    if context.layoutElementsHashMapInternal.length == context.layoutElementsHashMapInternal.capacity - 1 then
+        return nil
+    end
+    
+    local item = ffi.new("Clay_LayoutElementHashMapItem")
+    item.elementId = elementId
+    item.layoutElement = layoutElement
+    item.nextIndex = -1
+    item.generation = context.generation + 1
+    
+    local hashBucket = elementId.id % context.layoutElementsHashMap.capacity
+    local hashItemIndex = context.layoutElementsHashMap.internalArray[hashBucket]
+    local hashItemPrevious = -1
+    
+    while hashItemIndex ~= -1 do
+        local hashItem = context.layoutElementsHashMapInternal.internalArray + hashItemIndex
+        if hashItem.elementId.id == elementId.id then
+            item.nextIndex = hashItem.nextIndex
+            if hashItem.generation <= context.generation then
+                hashItem.elementId = elementId
+                hashItem.generation = context.generation + 1
+                hashItem.layoutElement = layoutElement
+                hashItem.nextIndex = -1
+            end
+            return hashItem
+        end
+        hashItemPrevious = hashItemIndex
+        hashItemIndex = hashItem.nextIndex
+    end
+    
+    local newHashItem = context.layoutElementsHashMapInternal.internalArray + context.layoutElementsHashMapInternal.length
+    newHashItem.elementId = item.elementId
+    newHashItem.layoutElement = item.layoutElement
+    newHashItem.nextIndex = item.nextIndex
+    newHashItem.generation = item.generation
+    newHashItem.onHoverFunction = nil
+    newHashItem.hoverFunctionUserData = nil
+    
+    context.layoutElementsHashMapInternal.length = context.layoutElementsHashMapInternal.length + 1
+    
+    if hashItemPrevious ~= -1 then
+        (context.layoutElementsHashMapInternal.internalArray + hashItemPrevious).nextIndex = context.layoutElementsHashMapInternal.length - 1
+    else
+        context.layoutElementsHashMap.internalArray[hashBucket] = context.layoutElementsHashMapInternal.length - 1
+    end
+    
+    return newHashItem
+end
+
+local function Clay__GetHashMapItem(id)
+    local hashBucket = id % context.layoutElementsHashMap.capacity
+    local elementIndex = context.layoutElementsHashMap.internalArray[hashBucket]
+    
+    while elementIndex ~= -1 do
+        local hashEntry = context.layoutElementsHashMapInternal.internalArray + elementIndex
+        if hashEntry.elementId.id == id then
+            return hashEntry
+        end
+        elementIndex = hashEntry.nextIndex
+    end
+    
+    return nil
+end
+
 local function allocate_config_from_table(config_table)
     local config = ffi.new("Clay_LayoutConfig")
                 
@@ -220,6 +321,18 @@ function M.initialize(capacity, dims)
     context.openLayoutElementStack.capacity = max_stack
     context.openLayoutElementStack.length = 0
     context.openLayoutElementStack.internalArray = Clay__Array_Allocate_Arena(max_stack, ffi.sizeof("int32_t"), context.internalArena)
+    
+    context.layoutElementsHashMapInternal.capacity = max_elements
+    context.layoutElementsHashMapInternal.length = 0
+    context.layoutElementsHashMapInternal.internalArray = ffi.cast("Clay_LayoutElementHashMapItem*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("Clay_LayoutElementHashMapItem"), context.internalArena))
+    
+    context.layoutElementsHashMap.capacity = max_elements
+    context.layoutElementsHashMap.length = 0
+    context.layoutElementsHashMap.internalArray = ffi.cast("int32_t*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("int32_t"), context.internalArena))
+    
+    for i = 0, max_elements - 1 do
+        context.layoutElementsHashMap.internalArray[i] = -1
+    end
     
     return context
 end
