@@ -14,6 +14,11 @@ local click_count = 0
 local element_ids = {}
 local fonts = {}
 
+-- Helper: round to integer pixels for crisp text
+local function round(x)
+    return math.floor(x + 0.5)
+end
+
 -- Text measurement using Love2D's font system
 local function love_measure_text(text, config)
     local font = fonts.default
@@ -290,7 +295,7 @@ function love.draw()
                 )
                 
                 local radius = math.max(r.topLeft, r.topRight, r.bottomLeft, r.bottomRight)
-                love.graphics.rectangle("fill", bbox.x, bbox.y, bbox.width, bbox.height, radius)
+                love.graphics.rectangle("fill", round(bbox.x), round(bbox.y), round(bbox.width), round(bbox.height), radius)
             end
         end
         
@@ -300,7 +305,7 @@ function love.draw()
         
         -- Header title
         love.graphics.setFont(fonts.title)
-        love.graphics.print("Llay Dashboard", 32, 26)
+        love.graphics.print("Llay Dashboard", round(32), round(26))
         
         -- Button labels
         love.graphics.setFont(fonts.default)
@@ -321,38 +326,38 @@ function love.draw()
                     local tw = fonts.default:getWidth(label)
                     local th = fonts.default:getHeight()
                     love.graphics.print(label, 
-                        bbox.x + (bbox.width - tw) / 2,
-                        bbox.y + (bbox.height - th) / 2)
+                        round(bbox.x + (bbox.width - tw) / 2),
+                        round(bbox.y + (bbox.height - th) / 2))
                 end
             end
             
             -- Stat labels
             if element_ids.stat1 == cmd.id then
-                love.graphics.print("Users: 1,234", bbox.x + 12, bbox.y + 12)
+                love.graphics.print("Users: 1,234", round(bbox.x + 12), round(bbox.y + 12))
                 love.graphics.setFont(fonts.large)
-                love.graphics.print("+12%", bbox.x + 12, bbox.y + 40)
+                love.graphics.print("+12%", round(bbox.x + 12), round(bbox.y + 40))
                 love.graphics.setFont(fonts.default)
             elseif element_ids.stat2 == cmd.id then
-                love.graphics.print("Revenue: $45k", bbox.x + 12, bbox.y + 12)
+                love.graphics.print("Revenue: $45k", round(bbox.x + 12), round(bbox.y + 12))
                 love.graphics.setFont(fonts.large)
-                love.graphics.print("+8%", bbox.x + 12, bbox.y + 40)
+                love.graphics.print("+8%", round(bbox.x + 12), round(bbox.y + 40))
                 love.graphics.setFont(fonts.default)
             elseif element_ids.stat3 == cmd.id then
-                love.graphics.print("Orders: 892", bbox.x + 12, bbox.y + 12)
+                love.graphics.print("Orders: 892", round(bbox.x + 12), round(bbox.y + 12))
                 love.graphics.setFont(fonts.large)
-                love.graphics.print("+24%", bbox.x + 12, bbox.y + 40)
+                love.graphics.print("+24%", round(bbox.x + 12), round(bbox.y + 40))
                 love.graphics.setFont(fonts.default)
             elseif element_ids.stat4 == cmd.id then
-                love.graphics.print("Bounce: 32%", bbox.x + 12, bbox.y + 12)
+                love.graphics.print("Bounce: 32%", round(bbox.x + 12), round(bbox.y + 12))
                 love.graphics.setFont(fonts.large)
-                love.graphics.print("-5%", bbox.x + 12, bbox.y + 40)
+                love.graphics.print("-5%", round(bbox.x + 12), round(bbox.y + 40))
                 love.graphics.setFont(fonts.default)
             elseif element_ids.chart_area == cmd.id then
-                love.graphics.print("Chart Area", bbox.x + 16, bbox.y + 16)
+                love.graphics.print("Chart Area", round(bbox.x + 16), round(bbox.y + 16))
             elseif element_ids.activity == cmd.id then
-                love.graphics.print("Recent Activity", bbox.x + 16, bbox.y + 16)
+                love.graphics.print("Recent Activity", round(bbox.x + 16), round(bbox.y + 16))
             elseif element_ids.notifications == cmd.id then
-                love.graphics.print("Notifications", bbox.x + 16, bbox.y + 16)
+                love.graphics.print("Notifications", round(bbox.x + 16), round(bbox.y + 16))
             end
         end
         
@@ -361,7 +366,7 @@ function love.draw()
         love.graphics.setColor(0.6, 0.6, 0.65, 1)
         local footer_text = string.format("Llay Layout Engine | %d elements | Hover: %s | Clicks: %d", 
             commands.length, hovered_element or "none", click_count)
-        love.graphics.print(footer_text, 20, HEIGHT - 28)
+        love.graphics.print(footer_text, round(20), round(HEIGHT - 28))
     end
 end
 
