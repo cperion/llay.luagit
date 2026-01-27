@@ -14,14 +14,10 @@ local function compare_with_golden(test_name, golden_file)
 	local layouts = require("tests.helpers.layouts")
 
 	local lua_cmds
-	if test_name == "simple_row" then
-		lua_cmds = layouts.simple_row()
-	elseif test_name == "nested_containers" then
-		lua_cmds = layouts.nested_containers()
-	elseif test_name == "alignment_center" then
-		lua_cmds = layouts.alignment_center()
+	if layouts[test_name] then
+		lua_cmds = layouts[test_name]()
 	else
-		print("  FAIL: Unknown test")
+		print("  FAIL: Unknown test: " .. test_name)
 		return false
 	end
 
@@ -80,22 +76,22 @@ local clay = require("init")
 clay.init(1024 * 1024 * 16)
 clay.set_measure_text_function(require("tests.helpers.mock").create_mock_measure())
 
-if compare_with_golden("simple_row", "golden_simple_row.txt") then
-	passed = passed + 1
-else
-	failed = failed + 1
-end
+-- Run all tests
+local tests = {
+	{ name = "simple_row", file = "golden_simple_row.txt" },
+	{ name = "nested_containers", file = "golden_nested_containers.txt" },
+	{ name = "alignment_center", file = "golden_alignment_center.txt" },
+	{ name = "sizing_modes", file = "golden_sizing_modes.txt" },
+	{ name = "child_gap", file = "golden_child_gap.txt" },
+	{ name = "corners_borders", file = "golden_corners_borders.txt" },
+}
 
-if compare_with_golden("nested_containers", "golden_nested_containers.txt") then
-	passed = passed + 1
-else
-	failed = failed + 1
-end
-
-if compare_with_golden("alignment_center", "golden_alignment_center.txt") then
-	passed = passed + 1
-else
-	failed = failed + 1
+for _, test in ipairs(tests) do
+	if compare_with_golden(test.name, test.file) then
+		passed = passed + 1
+	else
+		failed = failed + 1
+	end
 end
 
 print("==========================")

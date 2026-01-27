@@ -308,7 +308,64 @@ local function Clay__InitializeEphemeralMemory(ctx)
 			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_SharedElementConfig"), arena)
 		),
 	}
-	-- (Other configs omitted for brevity but follow same pattern)
+	ctx.aspectRatioElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_AspectRatioElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_AspectRatioElementConfig"), arena)
+		),
+	}
+	ctx.imageElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_ImageElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_ImageElementConfig"), arena)
+		),
+	}
+	ctx.floatingElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_FloatingElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_FloatingElementConfig"), arena)
+		),
+	}
+	ctx.clipElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_ClipElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_ClipElementConfig"), arena)
+		),
+	}
+	ctx.customElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_CustomElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_CustomElementConfig"), arena)
+		),
+	}
+	ctx.borderElementConfigs = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay_BorderElementConfig*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_BorderElementConfig"), arena)
+		),
+	}
+	ctx.warnings = {
+		capacity = 100,
+		length = 0,
+		internalArray = ffi.cast("Clay__Warning*", Clay__Array_Allocate_Arena(100, ffi.sizeof("Clay__Warning"), arena)),
+	}
+	ctx.dynamicStringData = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast("char*", Clay__Array_Allocate_Arena(max, 1, arena)),
+	}
 
 	ctx.layoutElementIdStrings = {
 		capacity = max,
