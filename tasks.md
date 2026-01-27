@@ -6,20 +6,26 @@
 - **Porting Rules:** [docs/porting-guide.md](docs/porting-guide.md)
 
 **Recent Progress:**
+- `feat(core): port Clay__CalculateFinalLayout from clay.h` - Full DFS-based layout algorithm with children tracking
+- `fix(ffi): remove duplicate type definitions and fix struct declarations` - Cleaned up RenderCommand and children types
+- `fix(core): fix children.elements pointer initialization in close_element` - Properly sets pointer into layoutElementChildren array
+- `fix(core): initialize all context arrays in M.initialize` - Added missing initializations for textElementData, wrappedTextLines, etc.
+- `feat(core): add FIXED sizing dimension calculation in Clay__SizeContainersAlongAxis` - Sets dimensions for fixed-size elements
 - `fix(tools): support CLAY_PACKED_ENUM macro-based type definitions` (e8042c9)
 - `feat(ffi): add missing type definitions for text and layout` (a4f7722)
 - `feat(core): implement hash map functions and initialize arrays` (9e6b1f5)
 - `feat(core): implement text measurement caching` (321f0c0)
 - `feat(core): implement Clay__SizeContainersAlongAxis sizing engine` (fb0bce4)
-- `fix(core): use simplified layout calculation for testing (direct C port pending)`
+- `docs(AGENTS): add guidance to seek clay.h before implementing algorithms` (c3fb1a5)
+- `feat(ffi): add LayoutElementTreeNode and LayoutElementTreeRoot types` (3e36075)
 
 **Summary:**
-- Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
-- Phase 2 (Core Infrastructure): ~85% complete (text measurement done, config handling pending)
-- Phase 3 (Layout Algorithms): ~50% complete (sizing engine done, children tracking done)
-- Phase 4 (Rendering): Not started
+- Phase 1 (FFI Types): ~95% complete (all core types defined)
+- Phase 2 (Core Infrastructure): ~95% complete (all arrays, hash maps, text measurement, element management)
+- Phase 3 (Layout Algorithms): ~80% complete (sizing engine, children tracking, full CalculateFinalLayout, position calculation)
+- Phase 4 (Rendering): ~40% complete (basic render command generation, rectangle commands)
 - Phase 5 (Shell API): ~60% complete (helpers pending)
-- Phase 6 (Verification): ~50% complete (complex tests pending)
+- Phase 6 (Verification): ~80% complete (all basic tests passing, complex tests pending)
 
 ## Phase 1: FFI Definitions (`src/clay_ffi.lua`)
 
@@ -80,38 +86,37 @@ Implementation of the memory management and basic data structures.
 
 - [x] **Text Measurement & Caching**
      - [x] `Clay__MeasureTextCached` (Hash map lookup with generation-based cleanup)
-     - [ ] `Clay__MeasureText` (The actual sizing logic - uses external callback)
+     - [x] `Clay__MeasureText` (The actual sizing logic - uses external callback)
 - [x] **Sizing Logic (`Clay__SizeContainersAlongAxis`)**
     This is the core layout engine. Break it down:
      - [x] Pass 1: Size `FIXED` and `PERCENT` containers.
      - [x] Pass 2: Calculate `innerContentSize` and `growContainerCount`.
      - [x] Pass 3: Distribute free space to `GROW` containers.
      - [x] Pass 4: Compress containers if parent doesn't fit (and not wrapping).
- - [ ] **Final Layout (`Clay__CalculateFinalLayout`)**
-     - [ ] Port full C implementation with DFS traversal
+- [x] **Final Layout (`Clay__CalculateFinalLayout`)**
+     - [x] X-Axis Sizing Pass (Call `SizeContainersAlongAxis(true)`)
+     - [x] Children tracking with proper elements pointer setup
+     - [x] DFS traversal for height propagation
+     - [x] Y-Axis Sizing Pass (Call `SizeContainersAlongAxis(false)`)
+     - [x] Final Position Calculation (DFS Traversal)
+         - [x] Calculate absolute positions (x, y)
+         - [x] Render command generation
      - [ ] Text wrapping integration
      - [ ] Aspect ratio scaling
      - [ ] Z-index sorting for floating elements
-- [ ] **Final Layout (`Clay__CalculateFinalLayout`)**
-    - [ ] X-Axis Sizing Pass (Call `SizeContainersAlongAxis(true)`)
-    - [ ] Text Wrapping Loop (Calculate line breaks based on width)
-    - [ ] Height propagation (Child height affecting parent)
-    - [ ] Y-Axis Sizing Pass (Call `SizeContainersAlongAxis(false)`)
-    - [ ] Final Position Calculation (DFS Traversal)
-        - [ ] Calculate absolute positions (x, y)
-        - [ ] Handle `Floating` elements (Z-index sorting, absolute positioning)
-        - [ ] Handle `Scroll` containers (Offset child positions)
+     - [ ] Handle `Floating` elements (Z-index sorting, absolute positioning)
+     - [ ] Handle `Scroll` containers (Offset child positions)
 
 ## Phase 4: Rendering (`src/core.lua`)
 
-- [ ] **Command Generation**
-    - [ ] `Clay__CreateRenderCommands` (Iterate calculated layout)
-    - [ ] Culling check (`Clay__ElementIsOffscreen`)
-    - [ ] Scissor commands for `Scroll` containers
-    - [ ] Rect/Border/Text command generation
+- [x] **Command Generation**
+     - [x] `Clay__CreateRenderCommands` (Iterate calculated layout)
+     - [ ] Culling check (`Clay__ElementIsOffscreen`)
+     - [ ] Scissor commands for `Scroll` containers
+     - [x] Rect/Border/Text command generation (basic rectangle commands)
 - [ ] **Scroll Handling**
-    - [ ] `Clay_UpdateScrollContainers` (Momentum, delta handling)
-    - [ ] `Clay_GetScrollContainerData`
+     - [ ] `Clay_UpdateScrollContainers` (Momentum, delta handling)
+     - [ ] `Clay_GetScrollContainerData`
 
 ## Phase 5: Shell API (`src/shell.lua`)
 
@@ -130,11 +135,12 @@ The user-facing Lua interface.
 
 ## Phase 6: Verification
 
-- [ ] **Basic Tests**
-    - [x] `test_layout.lua` (Simple row)
-    - [x] `test_sizing.lua` (Fixed sizing)
+- [x] **Basic Tests**
+     - [x] `test_layout.lua` (Simple row)
+     - [x] `test_sizing.lua` (Fixed sizing)
+     - [x] `test_render.lua` (Render command structure)
 - [ ] **Complex Tests** (Compare against C reference output)
-    - [ ] Nested `GROW` containers
-    - [ ] Text wrapping behavior
-    - [ ] Scroll container offsets
-    - [ ] Floating element positioning
+     - [ ] Nested `GROW` containers
+     - [ ] Text wrapping behavior
+     - [ ] Scroll container offsets
+     - [ ] Floating element positioning

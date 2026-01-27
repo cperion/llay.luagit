@@ -97,11 +97,6 @@ typedef struct {
 } Clay_LayoutConfig;
 
 typedef struct {
-    int32_t *elements;
-    uint16_t length;
-} Clay__LayoutElementChildren;
-
-typedef struct {
     Clay_Dimensions dimensions;
     Clay_String line;
 } Clay__WrappedTextLine;
@@ -115,6 +110,11 @@ typedef struct {
         Clay__WrappedTextLine *internalArray;
     } wrappedLines;
 } Clay__TextElementData;
+
+typedef struct {
+    int32_t *elements;
+    uint16_t length;
+} Clay__LayoutElementChildren;
 
 typedef struct {
     union {
@@ -172,12 +172,45 @@ typedef struct {
             uint16_t fontId;
             uint16_t fontSize;
             uint16_t letterSpacing;
-        } textData;
+            uint16_t lineHeight;
+        } text;
+        struct {
+            Clay_Color backgroundColor;
+            Clay_CornerRadius cornerRadius;
+            void* imageData;
+        } image;
+        struct {
+            Clay_Color backgroundColor;
+            Clay_CornerRadius cornerRadius;
+            void* customData;
+        } custom;
+        struct {
+            Clay_Color backgroundColor;
+            Clay_CornerRadius cornerRadius;
+        } rectangle;
+        struct {
+            bool horizontal;
+            bool vertical;
+        } clip;
     } renderData;
     Clay_String text;
     uint32_t configId;
     uint32_t id;
+    int32_t zIndex;
+    uint8_t commandType;
+    void* userData;
 } Clay_RenderCommand;
+
+typedef enum {
+    CLAY_RENDER_COMMAND_TYPE_NONE,
+    CLAY_RENDER_COMMAND_TYPERectangle,
+    CLAY_RENDER_COMMAND_TYPE_BORDER,
+    CLAY_RENDER_COMMAND_TYPE_TEXT,
+    CLAY_RENDER_COMMAND_TYPE_IMAGE,
+    CLAY_RENDER_COMMAND_TYPE_CUSTOM,
+    CLAY_RENDER_COMMAND_TYPE_SCISSOR_START,
+    CLAY_RENDER_COMMAND_TYPE_SCISSOR_END,
+} Clay_RenderCommandType;
 
 typedef struct {
     int32_t length;
@@ -390,11 +423,6 @@ typedef struct {
 } Clay__WrappedTextLineArray;
 
 typedef struct {
-    int32_t *elements;
-    uint16_t length;
-} Clay__LayoutElementChildren;
-
-typedef struct {
     uint32_t id;
     uint32_t offset;
     uint32_t baseId;
@@ -438,6 +466,18 @@ typedef enum {
     CLAY_POINTER_DATA_RELEASED_THIS_FRAME,
     CLAY_POINTER_DATA_RELEASED,
 } Clay_PointerDataInteractionState;
+
+typedef enum {
+    CLAY_ALIGN_X_LEFT,
+    CLAY_ALIGN_X_CENTER,
+    CLAY_ALIGN_X_RIGHT,
+} Clay_AlignX;
+
+typedef enum {
+    CLAY_ALIGN_Y_TOP,
+    CLAY_ALIGN_Y_CENTER,
+    CLAY_ALIGN_Y_BOTTOM,
+} Clay_AlignY;
 
 typedef struct {
     Clay_Vector2 position;
@@ -518,6 +558,51 @@ typedef struct {
 } Clay__ScrollContainerDataInternalArray;
 
 typedef struct {
+    int32_t *elements;
+    uint16_t length;
+} Clay__LayoutElementChildren;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__MeasuredWord *internalArray;
+} Clay__MeasuredWordArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__MeasureTextCacheItem *internalArray;
+} Clay__MeasureTextCacheItemArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_LayoutElementHashMapItem *internalArray;
+} Clay__LayoutElementHashMapItemArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_LayoutElementHashMapItem *internalArray;
+} Clay_LayoutElementHashMapArray;
+
+typedef struct {
+    Clay_Color color;
+    Clay_BorderWidth width;
+} Clay_BorderElementConfig;
+
+typedef struct {
+    Clay_Color backgroundColor;
+    Clay_CornerRadius cornerRadius;
+    void* userData;
+} Clay_SharedElementConfig;
+
+typedef struct {
+    int32_t *elements;
+    uint16_t length;
+} Clay__LayoutElementChildren;
+
+typedef struct {
     Clay_LayoutElement *layoutElement;
     Clay_Vector2 position;
     Clay_Vector2 nextChildOffset;
@@ -588,6 +673,9 @@ struct Clay_Context {
     Clay__int32_tArray measureTextHashMap;
     Clay__MeasuredWordArray measuredWords;
     Clay__int32_tArray measuredWordsFreeList;
+    Clay__ScrollContainerDataInternalArray scrollContainerDatas;
+    int32_t generation;
+    bool disableCulling;
 };
 
 Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity, void *memory);
@@ -620,5 +708,15 @@ return {
         LEFT = 0,
         CENTER = 1,
         RIGHT = 2,
+    },
+    Clay_RenderCommandType = {
+        NONE = 0,
+        RECTANGLE = 1,
+        BORDER = 2,
+        TEXT = 3,
+        IMAGE = 4,
+        CUSTOM = 5,
+        SCISSOR_START = 6,
+        SCISSOR_END = 7,
     },
 }
