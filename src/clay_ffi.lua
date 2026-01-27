@@ -2,6 +2,7 @@ local ffi = require("ffi")
 
 ffi.cdef[[
 typedef struct Clay_Context Clay_Context;
+typedef uint32_t Clay_ElementId;
 
 typedef struct {
     float x, y;
@@ -61,6 +62,18 @@ typedef struct {
 
 typedef uint8_t Clay__SizingType;
 typedef uint8_t Clay_LayoutDirection;
+
+typedef enum {
+    CLAY_TEXT_WRAP_WORDS,
+    CLAY_TEXT_WRAP_NEWLINES,
+    CLAY_TEXT_WRAP_NONE,
+} Clay_TextElementConfigWrapMode;
+
+typedef enum {
+    CLAY_TEXT_ALIGN_LEFT,
+    CLAY_TEXT_ALIGN_CENTER,
+    CLAY_TEXT_ALIGN_RIGHT,
+} Clay_TextAlignment;
 
 typedef struct {
     Clay__SizingType type;
@@ -145,6 +158,8 @@ typedef struct {
     uint16_t letterSpacing;
     uint16_t lineHeight;
     Clay_Padding padding;
+    Clay_TextElementConfigWrapMode wrapMode;
+    Clay_TextAlignment textAlignment;
 } Clay_TextElementConfig;
 
 typedef struct {
@@ -429,6 +444,73 @@ typedef struct {
     Clay_PointerDataInteractionState state;
 } Clay_PointerData;
 
+typedef struct {
+    int32_t startOffset;
+    int32_t length;
+    float width;
+    int32_t next;
+} Clay__MeasuredWord;
+
+typedef struct {
+    Clay_Dimensions unwrappedDimensions;
+    int32_t measuredWordsStartIndex;
+    float minWidth;
+    bool containsNewlines;
+    uint32_t id;
+    int32_t nextIndex;
+    uint32_t generation;
+} Clay__MeasureTextCacheItem;
+
+typedef struct {
+    Clay_BoundingBox boundingBox;
+    Clay_ElementId elementId;
+    Clay_LayoutElement* layoutElement;
+    void (*onHoverFunction)(Clay_ElementId elementId, Clay_PointerData pointerInfo, void *userData);
+    void *hoverFunctionUserData;
+    int32_t nextIndex;
+    uint32_t generation;
+    void *debugData;
+} Clay_LayoutElementHashMapItem;
+
+typedef struct {
+    Clay_LayoutElement *layoutElement;
+    Clay_BoundingBox boundingBox;
+    Clay_Dimensions contentSize;
+    Clay_Vector2 scrollOrigin;
+    Clay_Vector2 pointerOrigin;
+    Clay_Vector2 scrollMomentum;
+    Clay_Vector2 scrollPosition;
+    Clay_Vector2 previousDelta;
+    float momentumTime;
+    uint32_t elementId;
+    bool openThisFrame;
+    bool pointerScrollActive;
+} Clay__ScrollContainerDataInternal;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__MeasuredWord *internalArray;
+} Clay__MeasuredWordArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__MeasureTextCacheItem *internalArray;
+} Clay__MeasureTextCacheItemArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_LayoutElementHashMapItem *internalArray;
+} Clay_LayoutElementHashMapArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__ScrollContainerDataInternal *internalArray;
+} Clay__ScrollContainerDataInternalArray;
+
 struct Clay_Context {
     int32_t maxElementCount;
     int32_t maxMeasureTextCacheWordCount;
@@ -467,8 +549,6 @@ struct Clay_Context {
     Clay__charArray dynamicStringData;
 };
 
-typedef uint32_t Clay_ElementId;
-
 Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity, void *memory);
 Clay_Context* Clay_Initialize(Clay_Arena arena, Clay_Dimensions layoutDimensions, Clay_ErrorHandler errorHandler);
 void Clay_SetLayoutDimensions(Clay_Dimensions dimensions);
@@ -489,5 +569,15 @@ return {
     Clay_LayoutDirection = {
         LEFT_TO_RIGHT = 0,
         TOP_TO_BOTTOM = 1,
+    },
+    Clay_TextElementConfigWrapMode = {
+        WORDS = 0,
+        NEWLINES = 1,
+        NONE = 2,
+    },
+    Clay_TextAlignment = {
+        LEFT = 0,
+        CENTER = 1,
+        RIGHT = 2,
     },
 }
