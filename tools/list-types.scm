@@ -7,3 +7,7 @@
 (type_definition
   type: (enum_specifier)
   declarator: (type_identifier) @name)
+
+;; Catch type definitions with macros (e.g., CLAY_PACKED_ENUM)
+(type_definition
+  declarator: (type_identifier) @name)

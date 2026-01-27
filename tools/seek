@@ -22,6 +22,7 @@ case $ACTION in
       exit 1
     fi
     # Create a temporary query to find the specific type definition
+    # Updated to catch macro-based definitions (CLAY_PACKED_ENUM, etc.)
     cat > /tmp/show-query.scm <<EOF
 (type_definition
   type: (struct_specifier)
@@ -29,6 +30,9 @@ case $ACTION in
   (#eq? @typedef "$TARGET")) @typedef-def
 (type_definition
   type: (enum_specifier)
+  declarator: (type_identifier) @typedef
+  (#eq? @typedef "$TARGET")) @typedef-def
+(type_definition
   declarator: (type_identifier) @typedef
   (#eq? @typedef "$TARGET")) @typedef-def
 EOF
