@@ -2,6 +2,25 @@
 
 ## Workflow
 
+**Test-Driven Development** - Always write tests during implementation:
+
+1. Write a test **before** or **during** implementation, not after
+2. Run tests frequently: `luajit tests/run.lua`
+3. Add new test files to `tests/` when testing new features
+4. Mock external dependencies in `tests/helpers/mock.lua`
+
+**Track Progress** - Always update `tasks.md` after completing tasks:
+
+1. Mark completed items with `[x]`
+2. Add summary at top with progress percentages
+3. Note recent commits for reference
+
+> ⚠️ **IMPORTANT FOR AGENTS**:
+> - `todoread`/`todowrite` tools are for YOUR internal session task stack at a granular level (not tasks.md)
+> - `tasks.md` tracks overall project phases (Phase 1, 2, 3, etc.) - update it after features
+> - Use `todoread` at start of session to see your current work queue
+> - Use `todowrite` after completing granular tasks during implementation
+
 **Commit regularly** - After completing a task or feature, commit with a descriptive message. This is standard practice in this project.
 
 ```bash
