@@ -3,34 +3,59 @@ local shell = require("shell")
 
 local M = {}
 
-function M.init(capacity, dims)
-    if capacity and type(capacity) == "number" then
-        return core.initialize(capacity, dims)
-    else
-        return core.initialize(nil, capacity)
-    end
+-- ==================================================================================
+-- Lifecycle API
+-- ==================================================================================
+
+function M.initialize(capacity, dims)
+	-- Helper to handle optional args
+	if type(capacity) == "table" and dims == nil then
+		dims = capacity
+		capacity = nil
+	end
+	return core.initialize(capacity, dims)
 end
 
 function M.begin_layout()
-    core.begin_layout()
+	core.begin_layout()
 end
 
 function M.end_layout()
-    return core.end_layout()
+	return core.end_layout()
 end
 
 function M.set_dimensions(width, height)
-    core.set_dimensions(width, height)
+	core.set_dimensions(width, height)
 end
 
-M.container = shell.container
-M.row = shell.row
-M.column = shell.column
-M.box = shell.box
-M.text = shell.text
-M.style = shell.style
+function M.set_measure_text_function(fn)
+	core.set_measure_text(fn)
+end
 
-M.set_measure_text = core.set_measure_text
+-- ==================================================================================
+-- Declarative API
+-- ==================================================================================
+
+-- Maps to CLAY(...) macro
+M.Element = shell.Element
+
+-- Maps to CLAY_TEXT(...) macro
+M.Text = shell.Text
+
+-- ==================================================================================
+-- Constants & Enums
+-- ==================================================================================
+
+M.LayoutDirection = shell.LayoutDirection
+M.AlignX = shell.AlignX
+M.AlignY = shell.AlignY
+M.SizingType = shell.SizingType
+M.TextWrap = shell.TextWrap
+M.PointerCapture = shell.PointerCapture
+
+-- ==================================================================================
+-- Debug / Internals
+-- ==================================================================================
 
 M._core = core
 
