@@ -9,19 +9,27 @@
 3. Add new test files to `tests/` when testing new features
 4. Mock external dependencies in `tests/helpers/mock.lua`
 
-**Track Progress** - Always update `tasks.md` after completing tasks:
+**Follow Porting Guidelines** - Always adhere to `docs/porting-guide.md` when porting from clay.h:
+
+- Use `tools/seek` to explore clay.h (primary method, direct reading is fallback)
+- Follow 0-based indexing in Core (never convert to 1-based)
+- Copy struct definitions exactly from clay.h
+- Convert C enums to Lua constant tables
+- Write explicit boolean logic (C treats 0 as falsy, Lua treats 0 as truthy)
+- Use pointers explicitly for mutable state
+- No allocations in hot paths (no tables, closures, string manipulation in loops)
+
+**Track Progress** - Always update `tasks.md` after completing features:
 
 1. Mark completed items with `[x]`
 2. Add summary at top with progress percentages
 3. Note recent commits for reference
 
 > ⚠️ **IMPORTANT FOR AGENTS**:
-> - `todoread`/`todowrite` tools are for YOUR internal session task stack at a granular level (not tasks.md)
 > - `tasks.md` tracks overall project phases (Phase 1, 2, 3, etc.) - update it after features
-> - Use `todoread` at start of session to see your current work queue
-> - Use `todowrite` after completing granular tasks during implementation
+> - `todoread`/`todowrite` tools are for internal session tracking only
 
-**Commit regularly** - After completing a task or feature, commit with a descriptive message. This is standard practice in this project.
+**Commit regularly** - After completing a feature, commit with a descriptive message.
 
 ```bash
 git add -A
