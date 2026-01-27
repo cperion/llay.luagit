@@ -6,8 +6,33 @@
 
 ```bash
 git add -A
-git commit -m "Brief description of changes"
+git commit -m "type(scope): description"
 ```
+
+**Conventional Commits** - Use this specification for structured, meaningful commit messages:
+
+Format: `type[optional scope]: <description>`
+
+**Common types:**
+- `feat` - New feature (correlates with MINOR in SemVer)
+- `fix` - Bug fix (correlates with PATCH in SemVer)
+- `docs` - Documentation changes
+- `chore` - Maintenance, build, tooling changes
+- `refactor` - Code refactoring (no functional change)
+- `test` - Test additions/changes
+- `perf` - Performance improvements
+- `style` - Code style/formatting changes
+
+**Examples:**
+- `feat(core): add layout calculation engine`
+- `fix(ffi): correct Clay_Arena struct definition`
+- `docs(AGENTS): add commit workflow section`
+- `test(layout): add row layout tests`
+- `chore: update AGENTS.md with conventional commits spec`
+
+**Breaking changes:**
+- Add `!` after type/scope: `feat(api)!: breaking API change`
+- Or add footer: `BREAKING CHANGE: <description>`
 
 ## Project Overview
 
