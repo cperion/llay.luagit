@@ -1,5 +1,14 @@
 # AGENTS - Llay Development Guide
 
+## Workflow
+
+**Commit regularly** - After completing a task or feature, commit with a descriptive message. This is standard practice in this project.
+
+```bash
+git add -A
+git commit -m "Brief description of changes"
+```
+
 ## Project Overview
 
 Llay is a LuaJIT rewrite of the Clay layout engine following the "Lua-as-C" programming discipline. This achieves near-C performance through data-oriented design, explicit memory management, and minimal GC pressure.
