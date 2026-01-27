@@ -328,6 +328,44 @@ end
 - Separate functions per major enum path
 - Reuse scratch buffers per frame
 
+### Exploring clay.h
+
+**Primary method: Use `tools/seek`**
+
+The clay.h header file is large (~4400 lines). Use the tree-sitter-based `tools/seek` script to query struct and enum definitions:
+
+```bash
+# List all available types
+./tools/seek list
+
+# Show a specific type definition
+./tools/seek show Clay_Dimensions
+./tools/seek show Clay_LayoutConfig
+
+# Search for types matching a pattern
+./tools/seek list | grep Config
+```
+
+This is the recommended way to explore clay.h when porting types or understanding the API. Direct file reading is a fallback only.
+
+**Setup (one-time):**
+
+```bash
+# Clone and build tree-sitter C parser
+mkdir -p vendor/parsers
+cd vendor/parsers
+git clone https://github.com/tree-sitter/tree-sitter-c.git c
+cd c
+tree-sitter build
+
+# Update tree-sitter config (optional, if needed)
+jq '.["parser-directories"] += ["'"$(pwd | sed 's|/c||')"'"]' \
+  ~/.config/tree-sitter/config.json > /tmp/config.json
+mv /tmp/config.json ~/.config/tree-sitter/config.json
+```
+
+See `tools/README.md` for more details.
+
 ### Porting from clay.h Checklist
 
 1. Port dependency-free types (Vector2, Color, Dimensions, BoundingBox) to ffi.lua
@@ -342,11 +380,12 @@ end
 
 **Verification**: Build a complex static layout and diff Lua vs C render commands line-by-line
 
-## Documentation References
+## Documentation
 
-This repo contains detailed documentation for different aspects of the project:
+Comprehensive documentation is available in README.md, which consolidates all project documentation including:
+- Project overview and declarative shell API usage
+- "Lua as C" programming model: architecture philosophy, C-core vs Shell layer separation, performance patterns
+- Systematic guidelines for porting clay.h to LuaJIT with type translation rules and workflow checklist
+- Testing strategy, reference library build, comparison utilities, and mock measurement helpers
 
-- @llay.md - Project overview, declarative shell API usage, and example patterns
-- @lua-as-c.md - The "Lua as C" programming model: architecture philosophy, C-core vs Shell layer separation, performance patterns
-- @porting-guide.md - Systematic guidelines for porting clay.h to LuaJIT with type translation rules and workflow checklist
-- @testing.md - Testing strategy, reference library build, comparison utilities, and mock measurement helpers
+Note: The original individual documentation files (llay.md, lua-as-c.md, porting-guide.md, testing.md) are preserved in the repository for reference but README.md is the authoritative and up-to-date version.

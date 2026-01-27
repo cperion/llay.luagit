@@ -1,5 +1,7 @@
 # Testing Strategy
 
+> **Note:** This file has been superseded by the consolidated README.md. The content has been merged with docs/llay.md, docs/lua-as-c.md, and docs/porting-guide.md into a single authoritative documentation file in the root. This file is preserved for historical reference only.
+
 Use the original Clay C implementation as the source of truth. Compile it as a shared library and call via FFI to verify our Lua implementation produces identical results.
 
 ## Architecture

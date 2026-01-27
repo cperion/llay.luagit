@@ -2,12 +2,12 @@
 
 **Context:**
 - **Source Truth:** `clay/clay.h`
-- **Philosophy:** [lua-as-c.md](lua-as-c.md) (0-based indexing, FFI structs, no GC in hot paths)
-- **Porting Rules:** [porting-guide.md](porting-guide.md)
+- **Philosophy:** [docs/lua-as-c.md](docs/lua-as-c.md) (0-based indexing, FFI structs, no GC in hot paths)
+- **Porting Rules:** [docs/porting-guide.md](docs/porting-guide.md)
 
 ## Phase 1: FFI Definitions (`src/clay_ffi.lua`)
 
-Use `tools/seek_clay.lua show <Name>` to extract these from `clay.h`.
+Use `tools/seek show <Name>` to extract these from `clay.h`. This is the primary method for exploring clay.h—direct file reading is a fallback.
 
 - [ ] **Base Types**
     - [x] `Clay_Vector2`, `Clay_Dimensions`, `Clay_BoundingBox`
@@ -60,7 +60,7 @@ Implementation of the memory management and basic data structures.
 
 ## Phase 3: Layout Algorithms (`src/core.lua`)
 
-**Crucial:** Adhere to 0-based indexing loops. See `porting-guide.md`.
+**Crucial:** Adhere to 0-based indexing loops. See docs/porting-guide.md.
 
 - [ ] **Text Measurement & Caching**
     - [ ] `Clay__MeasureTextCached` (Hash map lookup)

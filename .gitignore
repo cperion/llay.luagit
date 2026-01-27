@@ -1,0 +1,6 @@
+
+# External dependencies
+vendor/parsers/
+
+# Parser binaries
+vendor/parsers/c/parser.so

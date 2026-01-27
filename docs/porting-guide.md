@@ -1,6 +1,36 @@
 # Porting Clay to LuaJIT
 
+> **Note:** This file has been superseded by the consolidated README.md. The content has been merged with docs/llay.md, docs/lua-as-c.md, and docs/testing.md into a single authoritative documentation file in the root. This file is preserved for historical reference only.
+
 Systematic guidelines for porting `clay.h` to LuaJIT using the **Lua-as-C** paradigm. The goal is to minimize translation friction and prevent logical errors from creeping in during the port.
+
+## Exploring clay.h
+
+**Primary method: Use `tools/seek`**
+
+The `clay.h` header file is large (~4400 lines). Do not read it directly—use the tree-sitter-based `tools/seek` script to query struct and enum definitions in C codebases.
+
+```bash
+# List all available types
+./tools/seek list
+
+# Show a specific type definition when porting
+./tools/seek show Clay_Dimensions
+./tools/seek show Clay_LayoutConfig
+./tools/seek show Clay_ElementConfig
+
+# Search for types matching a pattern
+./tools/seek list | grep -i sizing
+./tools/seek list | grep Config
+```
+
+This is the recommended workflow for:
+- Discovering available types in clay.h
+- Understanding struct field layouts
+- Checking enum values and member names
+- Copying definitions precisely to `src/ffi.lua`
+
+Direct file reading of `clay.h` is a fallback only. See `tools/README.md` for setup instructions.
 
 ## File Structure & Scope
 

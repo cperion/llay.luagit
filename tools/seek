@@ -1,0 +1,54 @@
+#!/bin/bash
+# tools/seek - Query clay.h using tree-sitter
+# Usage:
+#   ./tools/seek list          -> List all structs/enums
+#   ./tools/seek show <name>   -> Show a specific definition
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARSER_DIR="$SCRIPT_DIR/../vendor/parsers/c"
+CLAY_H="$SCRIPT_DIR/../clay/clay.h"
+
+ACTION=$1
+TARGET=$2
+
+case $ACTION in
+  list)
+    cd "$PARSER_DIR"
+    tree-sitter query -c "$SCRIPT_DIR/list-types.scm" "$CLAY_H" | grep "text:" | sed 's/.*text: `//' | sed 's/`//' | sort | uniq -c | sort -rn | awk '{print $2}'
+    ;;
+  show)
+    if [ -z "$TARGET" ]; then
+      echo "Usage: $0 show <struct|enum|forward_name>"
+      exit 1
+    fi
+    # Create a temporary query to find the specific type definition
+    cat > /tmp/show-query.scm <<EOF
+(type_definition
+  type: (struct_specifier)
+  declarator: (type_identifier) @typedef
+  (#eq? @typedef "$TARGET")) @typedef-def
+(type_definition
+  type: (enum_specifier)
+  declarator: (type_identifier) @typedef
+  (#eq? @typedef "$TARGET")) @typedef-def
+EOF
+    cd "$PARSER_DIR"
+    # Get line range from query output
+    OUTPUT=$(tree-sitter query /tmp/show-query.scm "$CLAY_H" 2>&1)
+    if echo "$OUTPUT" | grep -q "typedef-def"; then
+      START_LINE=$(echo "$OUTPUT" | grep "typedef-def" | head -1 | sed 's/.*start: (//' | sed 's/,.*//' | awk -F', ' '{print $1 + 1}')
+      END_LINE=$(echo "$OUTPUT" | grep "typedef-def" | head -1 | sed 's/.*end: (//' | sed 's/).*//' | awk -F', ' '{print $1 + 1}')
+      # Extract lines from clay.h
+      sed -n "${START_LINE},${END_LINE}p" "$CLAY_H"
+    else
+      echo "Symbol '$TARGET' not found"
+    fi
+    rm -f /tmp/show-query.scm
+    ;;
+  *)
+    echo "Usage:"
+    echo "  $0 list"
+    echo "  $0 show <name>"
+    exit 1
+    ;;
+esac
