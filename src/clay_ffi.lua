@@ -1,13 +1,8 @@
--- clay_ffi.lua - FFI cdef declarations from clay.h
--- This file contains the FFI type definitions for Clay types
-
 local ffi = require("ffi")
 
 ffi.cdef[[
-// Forward declarations
 typedef struct Clay_Context Clay_Context;
 
-// Basic Types
 typedef struct {
     float x, y;
 } Clay_Vector2;
@@ -88,7 +83,6 @@ typedef struct {
     Clay_LayoutDirection layoutDirection;
 } Clay_LayoutConfig;
 
-// Layout Element Types
 typedef struct {
     int32_t *elements;
     uint16_t length;
@@ -143,7 +137,6 @@ typedef struct {
     Clay_LayoutElement *internalArray;
 } Clay_LayoutElementArray;
 
-// Config Types
 typedef struct {
     void *userData;
     Clay_Color textColor;
@@ -154,7 +147,6 @@ typedef struct {
     Clay_Padding padding;
 } Clay_TextElementConfig;
 
-// Render Command Types
 typedef struct {
     Clay_BoundingBox boundingBox;
     struct {
@@ -178,15 +170,303 @@ typedef struct {
     Clay_RenderCommand* internalArray;
 } Clay_RenderCommandArray;
 
-// Context
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    int32_t *internalArray;
+} Clay__int32_tArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    bool *internalArray;
+} Clay__boolArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    char *internalArray;
+} Clay__charArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_LayoutConfig *internalArray;
+} Clay__LayoutConfigArray;
+
+typedef struct {
+    float aspectRatio;
+} Clay_AspectRatioElementConfig;
+
+typedef struct {
+    void* imageData;
+} Clay_ImageElementConfig;
+
+typedef enum {
+    CLAY_ATTACH_POINT_LEFT_TOP,
+    CLAY_ATTACH_POINT_LEFT_CENTER,
+    CLAY_ATTACH_POINT_LEFT_BOTTOM,
+    CLAY_ATTACH_POINT_CENTER_TOP,
+    CLAY_ATTACH_POINT_CENTER_CENTER,
+    CLAY_ATTACH_POINT_CENTER_BOTTOM,
+    CLAY_ATTACH_POINT_RIGHT_TOP,
+    CLAY_ATTACH_POINT_RIGHT_CENTER,
+    CLAY_ATTACH_POINT_RIGHT_BOTTOM,
+} Clay_FloatingAttachPointType;
+
+typedef enum {
+    CLAY_POINTER_CAPTURE_MODE_CAPTURE,
+    CLAY_POINTER_CAPTURE_MODE_PASSTHROUGH,
+} Clay_PointerCaptureMode;
+
+typedef enum {
+    CLAY_ATTACH_TO_NONE,
+    CLAY_ATTACH_TO_PARENT,
+    CLAY_ATTACH_TO_ELEMENT_WITH_ID,
+    CLAY_ATTACH_TO_ROOT,
+} Clay_FloatingAttachToElement;
+
+typedef enum {
+    CLAY_CLIP_TO_NONE,
+    CLAY_CLIP_TO_ATTACHED_PARENT,
+} Clay_FloatingClipToElement;
+
+typedef struct {
+    Clay_Vector2 offset;
+    Clay_Dimensions expand;
+    uint32_t parentId;
+    int16_t zIndex;
+    struct {
+        Clay_FloatingAttachPointType element;
+        Clay_FloatingAttachPointType parent;
+    } attachPoints;
+    Clay_PointerCaptureMode pointerCaptureMode;
+    Clay_FloatingAttachToElement attachTo;
+    Clay_FloatingClipToElement clipTo;
+} Clay_FloatingElementConfig;
+
+typedef struct {
+    void* customData;
+} Clay_CustomElementConfig;
+
+typedef struct {
+    bool horizontal;
+    bool vertical;
+    Clay_Vector2 childOffset;
+} Clay_ClipElementConfig;
+
+typedef struct {
+    uint16_t left;
+    uint16_t right;
+    uint16_t top;
+    uint16_t bottom;
+    uint16_t betweenChildren;
+} Clay_BorderWidth;
+
+typedef struct {
+    Clay_Color color;
+    Clay_BorderWidth width;
+} Clay_BorderElementConfig;
+
+typedef struct {
+    Clay_Color backgroundColor;
+    Clay_CornerRadius cornerRadius;
+    void* userData;
+} Clay_SharedElementConfig;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_AspectRatioElementConfig *internalArray;
+} Clay__AspectRatioElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_ImageElementConfig *internalArray;
+} Clay__ImageElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_FloatingElementConfig *internalArray;
+} Clay__FloatingElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_CustomElementConfig *internalArray;
+} Clay__CustomElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_ClipElementConfig *internalArray;
+} Clay__ClipElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_BorderElementConfig *internalArray;
+} Clay__BorderElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_SharedElementConfig *internalArray;
+} Clay__SharedElementConfigArray;
+
+typedef enum {
+    CLAY__ELEMENT_CONFIG_TYPE_NONE,
+    CLAY__ELEMENT_CONFIG_TYPE_BORDER,
+    CLAY__ELEMENT_CONFIG_TYPE_FLOATING,
+    CLAY__ELEMENT_CONFIG_TYPE_CLIP,
+    CLAY__ELEMENT_CONFIG_TYPE_ASPECT,
+    CLAY__ELEMENT_CONFIG_TYPE_IMAGE,
+    CLAY__ELEMENT_CONFIG_TYPE_TEXT,
+    CLAY__ELEMENT_CONFIG_TYPE_CUSTOM,
+    CLAY__ELEMENT_CONFIG_TYPE_SHARED,
+} Clay__ElementConfigType;
+
+typedef union {
+    Clay_TextElementConfig *textElementConfig;
+    Clay_AspectRatioElementConfig *aspectRatioElementConfig;
+    Clay_ImageElementConfig *imageElementConfig;
+    Clay_FloatingElementConfig *floatingElementConfig;
+    Clay_CustomElementConfig *customElementConfig;
+    Clay_ClipElementConfig *clipElementConfig;
+    Clay_BorderElementConfig *borderElementConfig;
+    Clay_SharedElementConfig *sharedElementConfig;
+} Clay_ElementConfigUnion;
+
+typedef struct {
+    Clay__ElementConfigType type;
+    Clay_ElementConfigUnion config;
+} Clay_ElementConfig;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_ElementConfig *internalArray;
+} Clay__ElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_TextElementConfig *internalArray;
+} Clay__TextElementConfigArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_String *internalArray;
+} Clay__StringArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__TextElementData *internalArray;
+} Clay__TextElementDataArray;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__WrappedTextLine *internalArray;
+} Clay__WrappedTextLineArray;
+
+typedef struct {
+    int32_t *elements;
+    uint16_t length;
+} Clay__LayoutElementChildren;
+
+typedef struct {
+    uint32_t id;
+    uint32_t offset;
+    uint32_t baseId;
+    Clay_String stringId;
+} Clay_ElementId;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay_ElementId *internalArray;
+} Clay_ElementIdArray;
+
+typedef struct {
+    bool maxElementsExceeded;
+    bool maxRenderCommandsExceeded;
+    bool maxTextMeasureCacheExceeded;
+    bool textMeasurementFunctionNotSet;
+} Clay_BooleanWarnings;
+
+typedef struct {
+    Clay_String baseMessage;
+    Clay_String dynamicMessage;
+} Clay__Warning;
+
+typedef struct {
+    int32_t capacity;
+    int32_t length;
+    Clay__Warning *internalArray;
+} Clay__WarningArray;
+
 typedef struct Clay_ErrorData Clay_ErrorData;
 
 typedef struct {
-    void (*errorHandlerFunction)( Clay_ErrorData errorText);
+    void (*errorHandlerFunction)(Clay_ErrorData errorText);
     void *userData;
 } Clay_ErrorHandler;
 
-// Public API
+typedef enum {
+    CLAY_POINTER_DATA_PRESSED_THIS_FRAME,
+    CLAY_POINTER_DATA_PRESSED,
+    CLAY_POINTER_DATA_RELEASED_THIS_FRAME,
+    CLAY_POINTER_DATA_RELEASED,
+} Clay_PointerDataInteractionState;
+
+typedef struct {
+    Clay_Vector2 position;
+    Clay_PointerDataInteractionState state;
+} Clay_PointerData;
+
+struct Clay_Context {
+    int32_t maxElementCount;
+    int32_t maxMeasureTextCacheWordCount;
+    bool warningsEnabled;
+    Clay_ErrorHandler errorHandler;
+    Clay_BooleanWarnings booleanWarnings;
+    Clay__WarningArray warnings;
+    Clay_PointerData pointerInfo;
+    Clay_Dimensions layoutDimensions;
+    Clay_ElementId dynamicElementIndexBaseHash;
+    uint32_t dynamicElementIndex;
+    bool debugModeEnabled;
+    bool disableCulling;
+    bool externalScrollHandlingEnabled;
+    uint32_t debugSelectedElementId;
+    uint32_t generation;
+    uintptr_t arenaResetOffset;
+    void *measureTextUserData;
+    void *queryScrollOffsetUserData;
+    Clay_Arena internalArena;
+    Clay_LayoutElementArray layoutElements;
+    Clay_RenderCommandArray renderCommands;
+    Clay__int32_tArray openLayoutElementStack;
+    Clay__int32_tArray layoutElementChildren;
+    Clay__int32_tArray layoutElementChildrenBuffer;
+    Clay__TextElementDataArray textElementData;
+    Clay__int32_tArray aspectRatioElementIndexes;
+    Clay__int32_tArray reusableElementIndexBuffer;
+    Clay__int32_tArray layoutElementClipElementIds;
+    Clay__LayoutConfigArray layoutConfigs;
+    Clay__ElementConfigArray elementConfigs;
+    Clay__TextElementConfigArray textElementConfigs;
+    Clay__StringArray layoutElementIdStrings;
+    Clay__WrappedTextLineArray wrappedTextLines;
+    Clay__boolArray treeNodeVisited;
+    Clay__charArray dynamicStringData;
+};
+
 typedef uint32_t Clay_ElementId;
 
 Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity, void *memory);

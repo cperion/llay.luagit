@@ -20,138 +20,84 @@ local Clay_LayoutDirection = {
 
 local CLAY__MAXFLOAT = 3.402823466e+38
 
-local MAX_ELEMENTS = 8192
 local MAX_MEMORY = 1024 * 1024 * 4
-
-local arena_memory = ffi.new("uint8_t[?]", MAX_MEMORY)
-local arena = ffi.new("Clay_Arena")
-arena.memory = arena_memory
-arena.capacity = MAX_MEMORY
-arena.nextAllocation = 0
-
-local MAX_RENDER_COMMANDS = 8192
-local render_commands = ffi.new("Clay_RenderCommand[?]", MAX_RENDER_COMMANDS)
-local render_commands_count = 0
-
-local MAX_LAYOUT_ELEMENTS = 8192
-local layout_elements = ffi.new("Clay_LayoutElement[?]", MAX_LAYOUT_ELEMENTS)
-local layout_elements_count = 0
-
-local open_element_stack = ffi.new("int32_t[?]", 512)
-local open_element_stack_count = 0
+local arena_memory = nil
+local context = nil
 
 local measure_text_fn = nil
 
-local layout_dimensions = ffi.new("Clay_Dimensions", {width=800, height=600})
-
-local element_counter = 0
-
 local next_element_id = 1
 
-local function allocate_in_arena(size, alignment)
-    local next_ptr = arena.nextAllocation
-    local aligned = band(next_ptr + alignment - 1, -alignment)
-    arena.nextAllocation = aligned + size
-    return ffi.cast("void*", aligned)
-end
-
-local function open_element_internal(config)
-    if layout_elements_count >= MAX_LAYOUT_ELEMENTS then
-        error("Max layout elements exceeded")
+function Clay__Array_Allocate_Arena(capacity, item_size, arena)
+    local total_size = capacity * item_size
+    local aligned_ptr = band(arena.nextAllocation + 15, -16)
+    local next_alloc = aligned_ptr + total_size
+    
+    if ffi.cast("size_t", next_alloc) > arena.capacity then
+        error("Arena capacity exceeded")
     end
     
-    local idx = layout_elements_count
-    layout_elements_count = layout_elements_count + 1
-    local elem = layout_elements + idx
-    
-    ffi.fill(elem, ffi.sizeof("Clay_LayoutElement"))
-    
-    elem.id = next_element_id
-    next_element_id = next_element_id + 1
-    elem.dimensions.width = 0
-    elem.dimensions.height = 0
-    elem.minDimensions.width = 0
-    elem.minDimensions.height = 0
-    elem.elementConfigs.length = 0
-    
-    if config ~= nil then
-        if type(config) == "table" then
-            local config_ptr = ffi.new("Clay_LayoutConfig")
-            if config.sizing ~= nil then
-                if config.sizing.width ~= nil then
-                    config_ptr.sizing.width.type = config.sizing.width.type or Clay__SizingType.FIT
-                    if config.sizing.width.minMax ~= nil then
-                        config_ptr.sizing.width.size.minMax.min = config.sizing.width.minMax.min or 0
-                        config_ptr.sizing.width.size.minMax.max = config.sizing.width.minMax.max or 0
-                    else
-                        config_ptr.sizing.width.size.minMax.min = 0
-                        config_ptr.sizing.width.size.minMax.max = 0
-                    end
-                end
-                if config.sizing.height ~= nil then
-                    config_ptr.sizing.height.type = config.sizing.height.type or Clay__SizingType.FIT
-                    if config.sizing.height.minMax ~= nil then
-                        config_ptr.sizing.height.size.minMax.min = config.sizing.height.minMax.min or 0
-                        config_ptr.sizing.height.size.minMax.max = config.sizing.height.minMax.max or 0
-                    else
-                        config_ptr.sizing.height.size.minMax.min = 0
-                        config_ptr.sizing.height.size.minMax.max = 0
-                    end
-                end
+    arena.nextAllocation = next_alloc
+    return ffi.cast("void*", arena.memory + aligned_ptr)
+end
+
+local function array_get(array, index)
+    if index < 0 or index >= array.capacity then
+        return nil
+    end
+    return array.internalArray[index]
+end
+
+local function array_add(array, item)
+    if array.length >= array.capacity then
+        error("Array capacity exceeded")
+    end
+    array.internalArray[array.length] = item
+    array.length = array.length + 1
+    return array.internalArray[array.length - 1]
+end
+
+local function allocate_config_from_table(config_table)
+    local config = ffi.new("Clay_LayoutConfig")
+                
+    if config_table.sizing then
+        if config_table.sizing.width then
+            config.sizing.width.type = config_table.sizing.width.type or Clay__SizingType.FIT
+            if config_table.sizing.width.minMax then
+                config.sizing.width.size.minMax.min = config_table.sizing.width.minMax.min or 0
+                config.sizing.width.size.minMax.max = config_table.sizing.width.minMax.max or 0
             end
-            if config.padding ~= nil then
-                config_ptr.padding.left = config.padding.left or 0
-                config_ptr.padding.right = config.padding.right or 0
-                config_ptr.padding.top = config.padding.top or 0
-                config_ptr.padding.bottom = config.padding.bottom or 0
+        end
+        if config_table.sizing.height then
+            config.sizing.height.type = config_table.sizing.height.type or Clay__SizingType.FIT
+            if config_table.sizing.height.minMax then
+                config.sizing.height.size.minMax.min = config_table.sizing.height.minMax.min or 0
+                config.sizing.height.size.minMax.max = config_table.sizing.height.minMax.max or 0
             end
-            if config.childGap ~= nil then
-                config_ptr.childGap = config.childGap
-            end
-            if config.childAlignment ~= nil then
-                config_ptr.childAlignment.x = config.childAlignment.x or 0
-                config_ptr.childAlignment.y = config.childAlignment.y or 0
-            end
-            if config.layoutDirection ~= nil then
-                config_ptr.layoutDirection = config.layoutDirection
-            end
-            elem.layoutConfig = config_ptr
-        elseif type(config) == "cdata" then
-            elem.layoutConfig = config
         end
     end
-    
-    open_element_stack[open_element_stack_count] = idx
-    open_element_stack_count = open_element_stack_count + 1
-    
-    return elem
-end
-
-local function close_element_internal()
-    if open_element_stack_count <= 0 then
-        error("Close element called with no open elements")
+                    
+    if config_table.padding then
+        config.padding.left = config_table.padding.left or 0
+        config.padding.right = config_table.padding.right or 0
+        config.padding.top = config_table.padding.top or 0
+        config.padding.bottom = config_table.padding.bottom or 0
+    end
+                    
+    if config_table.childGap then
+        config.childGap = config_table.childGap
+    end
+                    
+    if config_table.childAlignment then
+        config.childAlignment.x = config_table.childAlignment.x or 0
+        config.childAlignment.y = config_table.childAlignment.y or 0
+    end
+                    
+    if config_table.layoutDirection then
+        config.layoutDirection = config_table.layoutDirection
     end
     
-    open_element_stack_count = open_element_stack_count - 1
-end
-
-local function add_render_command(bound_box, bg_color)
-    if render_commands_count >= MAX_RENDER_COMMANDS then
-        error("Max render commands exceeded")
-    end
-    
-    local cmd = render_commands + render_commands_count
-    render_commands_count = render_commands_count + 1
-    
-    cmd.boundingBox.x = bound_box.x or 0
-    cmd.boundingBox.y = bound_box.y or 0
-    cmd.boundingBox.width = bound_box.width or 0
-    cmd.boundingBox.height = bound_box.height or 0
-    cmd.renderData.backgroundColor = bg_color or ffi.new("Clay_Color", {r=0, g=0, b=0, a=0})
-    cmd.text.length = 0
-    cmd.text.chars = nil
-    cmd.configId = 0
-    cmd.id = 0
+    return config
 end
 
 local function calculate_sized_size(elem, parent_size, axis)
@@ -177,85 +123,71 @@ local function calculate_sized_size(elem, parent_size, axis)
 end
 
 local function calculate_layout()
-    local root_elem = nil
-    
-    if layout_elements_count > 0 then
-        root_elem = layout_elements + 0
+    if context.layoutElements.length <= 0 then
+        return
     end
     
-    if root_elem ~= nil then
-        root_elem.dimensions.width = layout_dimensions.width
-        root_elem.dimensions.height = layout_dimensions.height
-    end
-    
-    for i = 0, layout_elements_count - 1 do
-        local elem = layout_elements + i
-        local config = elem.layoutConfig
-        
-        if i > 0 then
-            local parent_idx = i - 1
-            if parent_idx >= 0 then
-                local parent = layout_elements + parent_idx
-                local dir = 0
-                if config ~= nil then
-                    dir = config.layoutDirection
-                end
-                
-                local child_width = 0
-                local child_height = 0
-                
-                if dir == Clay_LayoutDirection.LEFT_TO_RIGHT then
-                    child_width = calculate_sized_size(elem, parent.dimensions.width, 0)
-                    child_height = calculate_sized_size(elem, parent.dimensions.height, 1)
-                else
-                    child_width = calculate_sized_size(elem, parent.dimensions.width, 0)
-                    child_height = calculate_sized_size(elem, parent.dimensions.height, 1)
-                end
-                
-                elem.dimensions.width = child_width
-                elem.dimensions.height = child_height
-            end
-        end
-    end
+    local root_elem = context.layoutElements.internalArray + 0
+    root_elem.dimensions.width = context.layoutDimensions.width
+    root_elem.dimensions.height = context.layoutDimensions.height
     
     local position_x = 0
     local position_y = 0
     
-    for i = 0, layout_elements_count - 1 do
-        local elem = layout_elements + i
+    for i = 0, context.layoutElements.length - 1 do
+        local elem = context.layoutElements.internalArray + i
         local config = elem.layoutConfig
         
-        if config ~= nil and config.padding ~= nil then
+        if i > 0 then
+            local parent = context.layoutElements.internalArray + (i - 1)
+            local dir = 0
+            if config ~= nil then
+                dir = config.layoutDirection
+            else
+                dir = parent.layoutConfig.layoutDirection
+            end
+                
+            local child_width = calculate_sized_size(elem, parent.dimensions.width, 0)
+            local child_height = calculate_sized_size(elem, parent.dimensions.height, 1)
+            
+            elem.dimensions.width = child_width
+            elem.dimensions.height = child_height
+        end
+    end
+    
+    for i = 0, context.layoutElements.length - 1 do
+        local elem = context.layoutElements.internalArray + i
+        local config = elem.layoutConfig
+        
+        if config ~= nil then
             position_x = position_x + config.padding.left
             position_y = position_y + config.padding.top
         end
         
-        local bbox = ffi.new("Clay_BoundingBox")
-        bbox.x = position_x
-        bbox.y = position_y
-        bbox.width = elem.dimensions.width
-        bbox.height = elem.dimensions.height
-        
-        local color = ffi.new("Clay_Color", {r=200, g=200, b=200, a=255})
-        add_render_command(bbox, color)
+        local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+        cmd.boundingBox.x = position_x
+        cmd.boundingBox.y = position_y
+        cmd.boundingBox.width = elem.dimensions.width
+        cmd.boundingBox.height = elem.dimensions.height
+        cmd.renderData.backgroundColor = ffi.new("Clay_Color", {r=200, g=200, b=200, a=255})
+        cmd.text.length = 0
+        cmd.text.chars = nil
+        cmd.configId = 0
+        cmd.id = elem.id
         
         if i > 0 then
-            local parent_idx = i - 1
-            if parent_idx >= 0 then
-                local parent = layout_elements + parent_idx
-                local parent_config = parent.layoutConfig
+            local parent = context.layoutElements.internalArray + (i - 1)
+            local parent_config = parent.layoutConfig
+            
+            if parent_config ~= nil then
+                local dir = parent_config.layoutDirection
+                local gap = parent_config.childGap or 0
                 
-                if parent_config ~= nil then
-                    local dir = parent_config.layoutDirection
-                    local gap = parent_config.childGap or 0
-                    local padding = parent_config.padding or ffi.new("Clay_Padding")
-                    
-                    if dir == Clay_LayoutDirection.LEFT_TO_RIGHT then
-                        position_x = position_x + elem.dimensions.width + gap
-                    else
-                        position_x = position_x - elem.dimensions.width
-                        position_y = position_y + elem.dimensions.height + gap
-                    end
+                if dir == Clay_LayoutDirection.LEFT_TO_RIGHT then
+                    position_x = position_x + elem.dimensions.width + gap
+                else
+                    position_x = position_x - elem.dimensions.width
+                    position_y = position_y + elem.dimensions.height + gap
                 end
             end
         end
@@ -263,74 +195,114 @@ local function calculate_layout()
 end
 
 function M.initialize(capacity, dims)
-    if capacity then
-        MAX_MEMORY = capacity
-    end
+    capacity = capacity or MAX_MEMORY
+    arena_memory = ffi.new("uint8_t[?]", capacity)
     
-    if dims then
-        layout_dimensions.width = dims.width or 800
-        layout_dimensions.height = dims.height or 600
-    end
+    context = ffi.new("Clay_Context")
+    context.internalArena.capacity = capacity
+    context.internalArena.memory = arena_memory
+    context.internalArena.nextAllocation = 0
+    context.layoutDimensions.width = (dims and dims.width) or 800
+    context.layoutDimensions.height = (dims and dims.height) or 600
     
-    return {initialized = true}
+    local max_elements = 8192
+    local max_commands = 8192
+    local max_stack = 512
+    
+    context.layoutElements.capacity = max_elements
+    context.layoutElements.length = 0
+    context.layoutElements.internalArray = Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("Clay_LayoutElement"), context.internalArena)
+    
+    context.renderCommands.capacity = max_commands
+    context.renderCommands.length = 0
+    context.renderCommands.internalArray = Clay__Array_Allocate_Arena(max_commands, ffi.sizeof("Clay_RenderCommand"), context.internalArena)
+    
+    context.openLayoutElementStack.capacity = max_stack
+    context.openLayoutElementStack.length = 0
+    context.openLayoutElementStack.internalArray = Clay__Array_Allocate_Arena(max_stack, ffi.sizeof("int32_t"), context.internalArena)
+    
+    return context
 end
 
 function M.begin_layout()
-    layout_elements_count = 0
-    open_element_stack_count = 0
-    render_commands_count = 0
+    context.layoutElements.length = 0
+    context.renderCommands.length = 0
+    context.openLayoutElementStack.length = 0
     next_element_id = 1
-    ffi.fill(layout_elements, ffi.sizeof("Clay_LayoutElement") * MAX_LAYOUT_ELEMENTS)
-    ffi.fill(render_commands, ffi.sizeof("Clay_RenderCommand") * MAX_RENDER_COMMANDS)
+    
+    context.layoutDimensions.width = context.layoutDimensions.width or 800
+    context.layoutDimensions.height = context.layoutDimensions.height or 600
 end
 
 function M.end_layout()
     calculate_layout()
     
     local result = ffi.new("Clay_RenderCommandArray")
-    result.capacity = MAX_RENDER_COMMANDS
-    result.length = render_commands_count
-    result.internalArray = render_commands
+    result.capacity = context.renderCommands.capacity
+    result.length = context.renderCommands.length
+    result.internalArray = context.renderCommands.internalArray
     
     return result
 end
 
 function M.open_element(config)
-    open_element_internal(config)
+    if context.layoutElements.length >= context.layoutElements.capacity then
+        error("Max layout elements exceeded")
+    end
+    
+    local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
+    elem.id = next_element_id
+    next_element_id = next_element_id + 1
+    elem.dimensions.width = 0
+    elem.dimensions.height = 0
+    elem.minDimensions.width = 0
+    elem.minDimensions.height = 0
+    elem.elementConfigs.length = 0
+    
+    if config ~= nil then
+        if type(config) == "table" then
+            elem.layoutConfig = allocate_config_from_table(config)
+        elseif type(config) == "cdata" then
+            elem.layoutConfig = config
+        end
+    end
+    
+    array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
 end
 
 function M.close_element()
-    close_element_internal()
+    if context.openLayoutElementStack.length <= 0 then
+        error("Close element called with no open elements")
+    end
+    context.openLayoutElementStack.length = context.openLayoutElementStack.length - 1
 end
 
 function M.open_text_element(text, config)
-    local elem = open_element_internal(config)
+    M.open_element(config)
     
-    if text and measure_text_fn then
-        local dims = measure_text_fn(text, 16)
-        elem.dimensions.width = dims.x
-        elem.dimensions.height = dims.y
-    elseif text then
-        elem.dimensions.width = #text * 10
-        elem.dimensions.height = 20
+    local len = context.layoutElements.length - 1
+    if len >= 0 then
+        local elem = context.layoutElements.internalArray + len
+        
+        if text and measure_text_fn then
+            local dims = measure_text_fn(text, 16)
+            elem.dimensions.width = dims.x
+            elem.dimensions.height = dims.y
+        elseif text and #text > 0 then
+            elem.dimensions.width = #text * 10
+            elem.dimensions.height = 20
+        end
     end
 end
 
 function M.set_dimensions(width, height)
-    layout_dimensions.width = width or 800
-    layout_dimensions.height = height or 600
+    context.layoutDimensions.width = width or 800
+    context.layoutDimensions.height = height or 600
 end
 
 function M.set_measure_text(fn)
     measure_text_fn = fn
 end
-
-local djb2_hash = {
-    5381,
-    33,
-    0,
-    0,
-}
 
 function M.hash_string(str, seed)
     local hash = seed or 5381

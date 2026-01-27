@@ -1,12 +1,13 @@
+package.path = "./src/?.lua;" .. package.path
+
 local function run_test(name)
     print("Running test_" .. name .. ".lua...")
-    
+
     local ok, err = pcall(function()
         dofile("tests/test_" .. name .. ".lua")
     end)
-    
+
     if ok then
-        print("  PASS")
         return true
     else
         print("  FAIL: " .. tostring(err))
