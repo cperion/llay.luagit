@@ -1,33 +1,46 @@
 -- Love2D Demo for Llay Layout Engine
--- Simple demonstration of Llay's layout capabilities
+-- Interactive UI demonstration with real text rendering
 
 package.path = "../src/?.lua;" .. package.path
+local ffi = require("ffi")
 local llay = require("init")
 
-local WIDTH = 800
-local HEIGHT = 600
+local WIDTH = 900
+local HEIGHT = 650
 
 local commands = nil
 local hovered_element = nil
 local click_count = 0
+local element_ids = {}
+local fonts = {}
 
--- Mock text measurement function
-local ffi = require("ffi")
-local function mock_measure_text(text, config)
-    -- Simple deterministic measurement for demo
-    -- 10px per character, 20px height
+-- Text measurement using Love2D's font system
+local function love_measure_text(text, config)
+    local font = fonts.default
+    if config.fontSize >= 20 then
+        font = fonts.large
+    elseif config.fontSize <= 14 then
+        font = fonts.small
+    end
+    
     local text_str = ffi.string(text.chars, text.length)
     return {
-        width = (#text_str) * 10,
-        height = 20
+        width = font:getWidth(text_str),
+        height = font:getHeight()
     }
 end
 
 function love.load()
+    -- Set up fonts
+    fonts.small = love.graphics.newFont(12)
+    fonts.default = love.graphics.newFont(16)
+    fonts.large = love.graphics.newFont(24)
+    fonts.title = love.graphics.newFont(28)
+    
     -- Initialize Llay
     llay.init(1024 * 1024 * 16)
     llay.set_dimensions(WIDTH, HEIGHT)
-    llay.set_measure_text_function(mock_measure_text)
+    llay.set_measure_text_function(love_measure_text)
     
     -- Set up Love2D window
     love.window.setMode(WIDTH, HEIGHT, {
@@ -36,7 +49,7 @@ function love.load()
         centered = true
     })
     
-    love.window.setTitle("Llay Love2D Demo - LuaJIT Layout Engine")
+    love.window.setTitle("Llay - LuaJIT Layout Engine Demo")
     
     -- Generate initial layout
     generate_layout()
@@ -45,194 +58,167 @@ end
 function generate_layout()
     llay.begin_layout()
     
-    -- Root container - fills entire window
+    -- Root container
     llay.Element({
         layout = {
             sizing = { width = "GROW", height = "GROW" },
             layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
-            padding = {20, 20, 20, 20},
-            childGap = 15
+            padding = {16, 16, 16, 16},
+            childGap = 12
         },
-        backgroundColor = {240, 240, 245, 255}  -- Light gray background
+        backgroundColor = {30, 32, 40, 255}
     }, function()
         
-        -- Header
+        -- Header bar
         llay.Element({
             id = "header",
             layout = {
-                sizing = { width = "GROW", height = 80 }
+                sizing = { width = "GROW", height = 56 },
+                layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
+                padding = {16, 16, 12, 12},
+                childAlignment = {llay.AlignX.LEFT, llay.AlignY.CENTER}
             },
-            backgroundColor = {50, 100, 200, 255},  -- Blue header
-            cornerRadius = {10, 10, 10, 10}
+            backgroundColor = {45, 48, 58, 255},
+            cornerRadius = {8, 8, 8, 8}
         })
         
-        -- Main content area (row with two columns)
+        -- Main content area
         llay.Element({
             layout = {
                 sizing = { width = "GROW", height = "GROW" },
                 layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
-                childGap = 20
+                childGap = 12
             }
         }, function()
             
-            -- Left panel
+            -- Sidebar
             llay.Element({
-                id = "left_panel",
+                id = "sidebar",
                 layout = {
-                    sizing = { width = 250, height = "GROW" }
+                    sizing = { width = 220, height = "GROW" },
+                    layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+                    padding = {12, 12, 12, 12},
+                    childGap = 8
                 },
-                backgroundColor = {255, 255, 255, 255},  -- White panel
-                cornerRadius = {8, 8, 8, 8},
-                border = {
-                    color = {200, 200, 210, 255},
-                    width = 2
-                }
+                backgroundColor = {45, 48, 58, 255},
+                cornerRadius = {8, 8, 8, 8}
             }, function()
-                -- Column of buttons inside left panel
-                llay.Element({
-                    layout = {
-                        sizing = { width = "GROW", height = "GROW" },
-                        layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
-                        padding = {15, 15, 15, 15},
-                        childGap = 10
-                    }
-                }, function()
-                    
-                    -- Button 1
+                
+                -- Menu buttons
+                local buttons = {
+                    { id = "btn_dashboard", color = {99, 102, 241, 255}, label = "Dashboard" },
+                    { id = "btn_projects", color = {59, 130, 246, 255}, label = "Projects" },
+                    { id = "btn_tasks", color = {16, 185, 129, 255}, label = "Tasks" },
+                    { id = "btn_calendar", color = {245, 158, 11, 255}, label = "Calendar" },
+                    { id = "btn_settings", color = {107, 114, 128, 255}, label = "Settings" },
+                }
+                
+                for _, btn in ipairs(buttons) do
                     llay.Element({
-                        id = "button1",
+                        id = btn.id,
                         layout = {
-                            sizing = { width = "GROW", height = 50 }
+                            sizing = { width = "GROW", height = 44 },
+                            childAlignment = {llay.AlignX.CENTER, llay.AlignY.CENTER}
                         },
-                        backgroundColor = {70, 130, 230, 255},  -- Blue button
+                        backgroundColor = btn.color,
                         cornerRadius = {6, 6, 6, 6}
                     })
-                    
-                    -- Button 2  
-                    llay.Element({
-                        id = "button2",
-                        layout = {
-                            sizing = { width = "GROW", height = 50 }
-                        },
-                        backgroundColor = {230, 100, 100, 255},  -- Red button
-                        cornerRadius = {6, 6, 6, 6}
-                    })
-                    
-                    -- Button 3
-                    llay.Element({
-                        id = "button3",
-                        layout = {
-                            sizing = { width = "GROW", height = 50 }
-                        },
-                        backgroundColor = {100, 200, 100, 255},  -- Green button
-                        cornerRadius = {6, 6, 6, 6}
-                    })
-                    
-                    -- Button 4
-                    llay.Element({
-                        id = "button4",
-                        layout = {
-                            sizing = { width = "GROW", height = 50 }
-                        },
-                        backgroundColor = {200, 150, 50, 255},  -- Orange button
-                        cornerRadius = {6, 6, 6, 6}
-                    })
-                    
-                end)
+                end
+                
             end)
             
-            -- Right panel (main content)
+            -- Main panel
             llay.Element({
-                id = "right_panel",
+                id = "main_panel",
                 layout = {
-                    sizing = { width = "GROW", height = "GROW" }
+                    sizing = { width = "GROW", height = "GROW" },
+                    layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+                    padding = {16, 16, 16, 16},
+                    childGap = 16
                 },
-                backgroundColor = {255, 255, 255, 255},  -- White panel
-                cornerRadius = {8, 8, 8, 8},
-                border = {
-                    color = {200, 200, 210, 255},
-                    width = 2
-                }
+                backgroundColor = {45, 48, 58, 255},
+                cornerRadius = {8, 8, 8, 8}
             }, function()
-                -- Grid of content boxes
+                
+                -- Stats row
                 llay.Element({
                     layout = {
-                        sizing = { width = "GROW", height = "GROW" },
-                        layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
-                        padding = {20, 20, 20, 20},
-                        childGap = 15
+                        sizing = { width = "GROW", height = 100 },
+                        layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
+                        childGap = 12
                     }
                 }, function()
                     
-                    -- First row of boxes
-                    llay.Element({
-                        layout = {
-                            sizing = { width = "GROW", height = 100 },
-                            layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
-                            childGap = 15
-                        }
-                    }, function()
-                        
-                        for i = 1, 3 do
-                            llay.Element({
-                                id = "content_box_" .. i,
-                                layout = {
-                                    sizing = { width = "GROW", height = "GROW" }
-                                },
-                                backgroundColor = {
-                                    math.min(180 + i * 20, 255),
-                                    math.min(180 + i * 10, 255),
-                                    math.min(220 + i * 5, 255),
-                                    255
-                                },
-                                cornerRadius = {8, 8, 8, 8}
-                            })
-                        end
-                        
-                    end)
+                    local stats = {
+                        { id = "stat1", color = {99, 102, 241, 255} },
+                        { id = "stat2", color = {16, 185, 129, 255} },
+                        { id = "stat3", color = {245, 158, 11, 255} },
+                        { id = "stat4", color = {239, 68, 68, 255} },
+                    }
                     
-                    -- Second row of boxes
-                    llay.Element({
-                        layout = {
-                            sizing = { width = "GROW", height = 150 },
-                            layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
-                            childGap = 15
-                        }
-                    }, function()
-                        
-                        for i = 4, 6 do
-                            llay.Element({
-                                id = "content_box_" .. i,
-                                layout = {
-                                    sizing = { width = "GROW", height = "GROW" }
-                                },
-                                backgroundColor = {
-                                    math.min(150 + i * 15, 255),
-                                    math.min(200 + i * 5, 255),
-                                    math.min(180 + i * 10, 255),
-                                    255
-                                },
-                                cornerRadius = {8, 8, 8, 8}
-                            })
-                        end
-                        
-                    end)
-                    
-                    -- Aspect ratio demo box
-                    llay.Element({
-                        id = "aspect_demo",
-                        layout = {
-                            sizing = {
-                                width = "GROW",
-                                height = { min = 100, max = 200 }
+                    for _, stat in ipairs(stats) do
+                        llay.Element({
+                            id = stat.id,
+                            layout = {
+                                sizing = { width = "GROW", height = "GROW" }
                             },
-                            aspectRatio = 1.5  -- 3:2 aspect ratio
+                            backgroundColor = stat.color,
+                            cornerRadius = {8, 8, 8, 8}
+                        })
+                    end
+                    
+                end)
+                
+                -- Content grid
+                llay.Element({
+                    layout = {
+                        sizing = { width = "GROW", height = "GROW" },
+                        layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
+                        childGap = 12
+                    }
+                }, function()
+                    
+                    -- Left column
+                    llay.Element({
+                        id = "chart_area",
+                        layout = {
+                            sizing = { width = "GROW", height = "GROW" }
                         },
-                        backgroundColor = {180, 180, 220, 255},
+                        backgroundColor = {55, 58, 70, 255},
                         cornerRadius = {8, 8, 8, 8}
                     })
                     
+                    -- Right column
+                    llay.Element({
+                        layout = {
+                            sizing = { width = 280, height = "GROW" },
+                            layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+                            childGap = 12
+                        }
+                    }, function()
+                        
+                        llay.Element({
+                            id = "activity",
+                            layout = {
+                                sizing = { width = "GROW", height = "GROW" }
+                            },
+                            backgroundColor = {55, 58, 70, 255},
+                            cornerRadius = {8, 8, 8, 8}
+                        })
+                        
+                        llay.Element({
+                            id = "notifications",
+                            layout = {
+                                sizing = { width = "GROW", height = 140 }
+                            },
+                            backgroundColor = {55, 58, 70, 255},
+                            cornerRadius = {8, 8, 8, 8}
+                        })
+                        
+                    end)
+                    
                 end)
+                
             end)
             
         end)
@@ -241,135 +227,148 @@ function generate_layout()
         llay.Element({
             id = "footer",
             layout = {
-                sizing = { width = "GROW", height = 60 }
+                sizing = { width = "GROW", height = 36 },
+                childAlignment = {llay.AlignX.CENTER, llay.AlignY.CENTER}
             },
-            backgroundColor = {50, 50, 60, 255},  -- Dark footer
-            cornerRadius = {0, 0, 10, 10}
+            backgroundColor = {45, 48, 58, 255},
+            cornerRadius = {6, 6, 6, 6}
         })
         
     end)
     
     commands = llay.end_layout()
-    print("Generated " .. commands.length .. " render commands")
+    
+    -- Store element IDs
+    element_ids = {}
+    local ids_to_track = {
+        "header", "sidebar", "main_panel", "footer",
+        "btn_dashboard", "btn_projects", "btn_tasks", "btn_calendar", "btn_settings",
+        "stat1", "stat2", "stat3", "stat4",
+        "chart_area", "activity", "notifications"
+    }
+    for _, name in ipairs(ids_to_track) do
+        element_ids[name] = llay.ID(name).id
+    end
 end
 
 function love.update(dt)
-    -- Update pointer state
     local x, y = love.mouse.getPosition()
-    local is_down = love.mouse.isDown(1)
-    llay.set_pointer_state(x, y, is_down)
+    llay.set_pointer_state(x, y, love.mouse.isDown(1))
     
-    -- Check what element is hovered
     hovered_element = nil
-    local elements_to_check = {
-        "button1", "button2", "button3", "button4",
-        "left_panel", "right_panel", "header", "footer"
-    }
-    
-    for _, id in ipairs(elements_to_check) do
-        if llay.pointer_over(id) then
-            hovered_element = id
+    for name, _ in pairs(element_ids) do
+        if llay.pointer_over(name) then
+            hovered_element = name
             break
-        end
-    end
-    
-    -- Also check content boxes
-    if not hovered_element then
-        for i = 1, 6 do
-            if llay.pointer_over("content_box_" .. i) then
-                hovered_element = "content_box_" .. i
-                break
-            end
-        end
-    end
-    
-    if not hovered_element then
-        if llay.pointer_over("aspect_demo") then
-            hovered_element = "aspect_demo"
         end
     end
 end
 
 function love.draw()
-    -- Clear with light background
-    love.graphics.clear(0.95, 0.95, 0.96, 1)
+    love.graphics.clear(0.12, 0.13, 0.16, 1)
     
     if commands then
-        -- Draw all render commands from Llay
         for i = 0, commands.length - 1 do
             local cmd = commands.internalArray[i]
             local bbox = cmd.boundingBox
             
-            -- Draw rectangles (commandType 1 is RECTANGLE)
-            if cmd.commandType == 1 then
+            if cmd.commandType == 1 then  -- RECTANGLE
                 local color = cmd.renderData.rectangle.backgroundColor
+                local r = cmd.renderData.rectangle.cornerRadius
                 
-                -- Set color (convert from 0-255 to 0-1)
-                love.graphics.setColor(color.r/255, color.g/255, color.b/255, color.a/255)
-                
-                -- Draw with rounded corners if cornerRadius > 0
-                local radius = cmd.renderData.rectangle.cornerRadius
-                if radius.topLeft > 0 or radius.topRight > 0 or 
-                   radius.bottomLeft > 0 or radius.bottomRight > 0 then
-                    -- Use simple rounded rectangle
-                    love.graphics.rectangle("fill", bbox.x, bbox.y, bbox.width, bbox.height, 5)
-                else
-                    love.graphics.rectangle("fill", bbox.x, bbox.y, bbox.width, bbox.height)
+                -- Hover effect: lighten color
+                local hover_boost = 0
+                if hovered_element and element_ids[hovered_element] == cmd.id then
+                    hover_boost = 0.1
                 end
-            end
-            
-            -- Draw borders (commandType 2 is BORDER)
-            if cmd.commandType == 2 then
-                local border_color = cmd.renderData.border.color
-                local border_width = cmd.renderData.border.width
                 
-                love.graphics.setColor(border_color.r/255, border_color.g/255, 
-                                      border_color.b/255, border_color.a/255)
-                love.graphics.setLineWidth(border_width.left or 2)
-                love.graphics.rectangle("line", bbox.x, bbox.y, bbox.width, bbox.height)
+                love.graphics.setColor(
+                    math.min(color.r/255 + hover_boost, 1),
+                    math.min(color.g/255 + hover_boost, 1),
+                    math.min(color.b/255 + hover_boost, 1),
+                    color.a/255
+                )
+                
+                local radius = math.max(r.topLeft, r.topRight, r.bottomLeft, r.bottomRight)
+                love.graphics.rectangle("fill", bbox.x, bbox.y, bbox.width, bbox.height, radius)
             end
         end
         
-        -- Draw hover highlight
-        if hovered_element then
-            love.graphics.setColor(1, 1, 1, 0.3)
-            love.graphics.setLineWidth(3)
+        -- Draw labels on elements
+        love.graphics.setFont(fonts.default)
+        love.graphics.setColor(1, 1, 1, 0.9)
+        
+        -- Header title
+        love.graphics.setFont(fonts.title)
+        love.graphics.print("Llay Dashboard", 32, 26)
+        
+        -- Button labels
+        love.graphics.setFont(fonts.default)
+        local button_labels = {
+            btn_dashboard = "Dashboard",
+            btn_projects = "Projects", 
+            btn_tasks = "Tasks",
+            btn_calendar = "Calendar",
+            btn_settings = "Settings"
+        }
+        
+        for i = 0, commands.length - 1 do
+            local cmd = commands.internalArray[i]
+            local bbox = cmd.boundingBox
             
-            -- Find and highlight the hovered element
-            for i = 0, commands.length - 1 do
-                local cmd = commands.internalArray[i]
-                if cmd.id and tostring(cmd.id):find(hovered_element, 1, true) then
-                    local bbox = cmd.boundingBox
-                    love.graphics.rectangle("line", bbox.x - 2, bbox.y - 2, 
-                                          bbox.width + 4, bbox.height + 4)
-                    break
+            for name, label in pairs(button_labels) do
+                if element_ids[name] == cmd.id then
+                    local tw = fonts.default:getWidth(label)
+                    local th = fonts.default:getHeight()
+                    love.graphics.print(label, 
+                        bbox.x + (bbox.width - tw) / 2,
+                        bbox.y + (bbox.height - th) / 2)
                 end
+            end
+            
+            -- Stat labels
+            if element_ids.stat1 == cmd.id then
+                love.graphics.print("Users: 1,234", bbox.x + 12, bbox.y + 12)
+                love.graphics.setFont(fonts.large)
+                love.graphics.print("+12%", bbox.x + 12, bbox.y + 40)
+                love.graphics.setFont(fonts.default)
+            elseif element_ids.stat2 == cmd.id then
+                love.graphics.print("Revenue: $45k", bbox.x + 12, bbox.y + 12)
+                love.graphics.setFont(fonts.large)
+                love.graphics.print("+8%", bbox.x + 12, bbox.y + 40)
+                love.graphics.setFont(fonts.default)
+            elseif element_ids.stat3 == cmd.id then
+                love.graphics.print("Orders: 892", bbox.x + 12, bbox.y + 12)
+                love.graphics.setFont(fonts.large)
+                love.graphics.print("+24%", bbox.x + 12, bbox.y + 40)
+                love.graphics.setFont(fonts.default)
+            elseif element_ids.stat4 == cmd.id then
+                love.graphics.print("Bounce: 32%", bbox.x + 12, bbox.y + 12)
+                love.graphics.setFont(fonts.large)
+                love.graphics.print("-5%", bbox.x + 12, bbox.y + 40)
+                love.graphics.setFont(fonts.default)
+            elseif element_ids.chart_area == cmd.id then
+                love.graphics.print("Chart Area", bbox.x + 16, bbox.y + 16)
+            elseif element_ids.activity == cmd.id then
+                love.graphics.print("Recent Activity", bbox.x + 16, bbox.y + 16)
+            elseif element_ids.notifications == cmd.id then
+                love.graphics.print("Notifications", bbox.x + 16, bbox.y + 16)
             end
         end
         
-        -- Draw UI info
-        love.graphics.setColor(0.2, 0.2, 0.2, 1)
-        love.graphics.print("Llay Love2D Demo - Interactive UI Layout", 20, 20)
-        love.graphics.print("Hovered: " .. (hovered_element or "none"), 20, 45)
-        love.graphics.print("Clicks: " .. click_count, 20, 70)
-        love.graphics.print("Commands: " .. commands.length, 20, 95)
-        love.graphics.print("Press R to regenerate, ESC to quit", 20, HEIGHT - 40)
+        -- Footer text
+        love.graphics.setFont(fonts.small)
+        love.graphics.setColor(0.6, 0.6, 0.65, 1)
+        local footer_text = string.format("Llay Layout Engine | %d elements | Hover: %s | Clicks: %d", 
+            commands.length, hovered_element or "none", click_count)
+        love.graphics.print(footer_text, 20, HEIGHT - 28)
     end
 end
 
-function love.mousepressed(x, y, button, istouch, presses)
-    if button == 1 then  -- Left click
+function love.mousepressed(x, y, button)
+    if button == 1 and hovered_element then
         click_count = click_count + 1
-        
-        if hovered_element then
-            print("Clicked on: " .. hovered_element)
-            
-            -- Simple interaction: regenerate layout with different colors
-            if hovered_element:find("button") then
-                generate_layout()
-                print("Layout regenerated after button click")
-            end
-        end
+        print("Clicked: " .. hovered_element)
     end
 end
 
@@ -377,14 +376,6 @@ function love.keypressed(key)
     if key == "escape" then
         love.event.quit()
     elseif key == "r" then
-        -- Regenerate layout
         generate_layout()
-        print("Layout regenerated")
-    elseif key == "f1" then
-        -- Print debug info
-        print("=== Llay Debug Info ===")
-        print("Commands: " .. commands.length)
-        print("Hovered: " .. (hovered_element or "none"))
-        print("Click count: " .. click_count)
     end
 end
