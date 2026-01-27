@@ -37,6 +37,7 @@ local Clay_RenderCommandType = {
 	SCISSOR_END = 7,
 }
 local Clay_TextElementConfigWrapMode = { WORDS = 0, NEWLINES = 1, NONE = 2 }
+local Clay_TextAlignment = { LEFT = 0, CENTER = 1, RIGHT = 2 }
 local Clay_PointerDataInteractionState = { PRESSED_THIS_FRAME = 0, PRESSED = 1, RELEASED_THIS_FRAME = 2, RELEASED = 3 }
 
 local CLAY__SPACECHAR = ffi.new("Clay_String", { length = 1, chars = " " })
@@ -64,6 +65,17 @@ local function Clay__FloatEqual(a, b)
 	return math.abs(a - b) < CLAY__EPSILON
 end
 
+local function Clay__MemCmp(p1, p2, length)
+	local s1 = ffi.cast("char*", p1)
+	local s2 = ffi.cast("char*", p2)
+	for i = 0, length - 1 do
+		if s1[i] ~= s2[i] then
+			return false
+		end
+	end
+	return true
+end
+
 local function Clay__Array_Allocate_Arena(capacity, item_size, arena)
 	local total_size = capacity * item_size
 	local aligned_ptr = arena.nextAllocation + (64 - (arena.nextAllocation % 64))
@@ -76,6 +88,32 @@ local function Clay__Array_Allocate_Arena(capacity, item_size, arena)
 	end
 	arena.nextAllocation = next_alloc
 	return ffi.cast("void*", arena.memory + aligned_ptr)
+end
+
+local function Clay__GetHashMapItem(id)
+	if context.layoutElementsHashMap.internalArray == nil then
+		return nil
+	end
+	local hashBucket = id % context.layoutElementsHashMap.capacity
+	local elementIndex = context.layoutElementsHashMap.internalArray[hashBucket]
+	while elementIndex ~= -1 do
+		local hashEntry = context.layoutElementsHashMapInternal.internalArray + elementIndex
+		if hashEntry.elementId.id == id then
+			return hashEntry
+		end
+		elementIndex = hashEntry.nextIndex
+	end
+	return nil
+end
+
+local function Clay__ElementIsOffscreen(boundingBox)
+	if context.disableCulling then
+		return false
+	end
+	return (boundingBox.x > context.layoutDimensions.width)
+		or (boundingBox.y > context.layoutDimensions.height)
+		or (boundingBox.x + boundingBox.width < 0)
+		or (boundingBox.y + boundingBox.height < 0)
 end
 
 -- ==================================================================================
@@ -134,6 +172,50 @@ local function element_id_array_get(array, index)
 	return array.internalArray + index
 end
 
+local function Clay__AddHashMapItem(elementId, layoutElement)
+	if context.layoutElementsHashMapInternal.length >= context.layoutElementsHashMapInternal.capacity - 1 then
+		return nil
+	end
+
+	local itemIndex = context.layoutElementsHashMapInternal.length
+	context.layoutElementsHashMapInternal.length = context.layoutElementsHashMapInternal.length + 1
+	local item = context.layoutElementsHashMapInternal.internalArray + itemIndex
+
+	item.elementId = elementId
+	item.layoutElement = layoutElement
+	item.nextIndex = -1
+	item.generation = context.generation + 1
+
+	item.debugData = array_add(context.debugElementData, ffi.new("Clay__DebugElementData"))
+
+	local hashBucket = elementId.id % context.layoutElementsHashMap.capacity
+	local hashItemIndex = context.layoutElementsHashMap.internalArray[hashBucket]
+	local previousIndex = -1
+
+	while hashItemIndex ~= -1 do
+		local hashItem = context.layoutElementsHashMapInternal.internalArray + hashItemIndex
+		if hashItem.elementId.id == elementId.id then
+			item.nextIndex = hashItem.nextIndex
+
+			context.layoutElementsHashMapInternal.length = context.layoutElementsHashMapInternal.length - 1
+			hashItem.generation = context.generation + 1
+			hashItem.layoutElement = layoutElement
+			hashItem.debugData.collision = false
+			return hashItem
+		end
+		previousIndex = hashItemIndex
+		hashItemIndex = hashItem.nextIndex
+	end
+
+	if previousIndex ~= -1 then
+		context.layoutElementsHashMapInternal.internalArray[previousIndex].nextIndex = itemIndex
+	else
+		context.layoutElementsHashMap.internalArray[hashBucket] = itemIndex
+	end
+
+	return item
+end
+
 -- ==================================================================================
 -- Hashing
 -- ==================================================================================
@@ -150,7 +232,7 @@ local function Clay__HashString(str, seed)
 	hash = (hash + bit.lshift(hash, 3)) % 4294967296
 	hash = bit.bxor(hash, bit.rshift(hash, 11))
 	hash = (hash + bit.lshift(hash, 15)) % 4294967296
-	return hash + 1
+	return { id = hash + 1, offset = 0, baseId = seed or 0, stringId = { length = len, chars = str } }
 end
 
 local function Clay__HashNumber(offset, seed)
@@ -337,6 +419,14 @@ local function Clay__InitializePersistentMemory(ctx)
 			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay_ElementId"), arena)
 		),
 	}
+	ctx.debugElementData = {
+		capacity = max,
+		length = 0,
+		internalArray = ffi.cast(
+			"Clay__DebugElementData*",
+			Clay__Array_Allocate_Arena(max, ffi.sizeof("Clay__DebugElementData"), arena)
+		),
+	}
 
 	ctx.arenaResetOffset = arena.nextAllocation
 end
@@ -364,6 +454,48 @@ local function Clay__StoreSharedElementConfig(config)
 		return nil
 	end
 	return array_add(context.sharedElementConfigs, config)
+end
+
+local function Clay__StoreAspectRatioElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.aspectRatioElementConfigs, config)
+end
+
+local function Clay__StoreImageElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.imageElementConfigs, config)
+end
+
+local function Clay__StoreCustomElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.customElementConfigs, config)
+end
+
+local function Clay__StoreFloatingElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.floatingElementConfigs, config)
+end
+
+local function Clay__StoreBorderElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.borderElementConfigs, config)
+end
+
+local function Clay__StoreClipElementConfig(config)
+	if context.booleanWarnings.maxElementsExceeded then
+		return nil
+	end
+	return array_add(context.clipElementConfigs, config)
 end
 
 local function Clay__ElementHasConfig(element, configType)
@@ -403,6 +535,133 @@ local function Clay__UpdateAspectRatioBox(element)
 				element.dimensions.height = element.dimensions.width * (1 / aspectConfig.aspectRatio)
 			end
 		end
+	end
+end
+
+local function Clay__AttachElementConfig(configUnion, typeVal)
+	if context.booleanWarnings.maxElementsExceeded then
+		return
+	end
+	local openElement = Clay__GetOpenLayoutElement()
+	if openElement == nil then
+		return
+	end
+
+	if openElement.elementConfigs.length == 0 then
+		openElement.elementConfigs.internalArray = context.elementConfigs.internalArray + context.elementConfigs.length
+	end
+
+	openElement.elementConfigs.length = openElement.elementConfigs.length + 1
+	local elemConfig = array_add(context.elementConfigs, ffi.new("Clay_ElementConfig"))
+	elemConfig.type = typeVal
+	elemConfig.config = configUnion
+end
+
+local function Clay__ConfigureOpenElement(declaration)
+	local openLayoutElement = Clay__GetOpenLayoutElement()
+	if openLayoutElement == nil then
+		return
+	end
+
+	openLayoutElement.layoutConfig = Clay__StoreLayoutConfig(declaration.layout)
+
+	local sharedConfig = nil
+	if declaration.backgroundColor.a > 0 then
+		sharedConfig = Clay__StoreSharedElementConfig({
+			backgroundColor = declaration.backgroundColor,
+			cornerRadius = declaration.cornerRadius,
+			userData = declaration.userData,
+		})
+		Clay__AttachElementConfig({ sharedElementConfig = sharedConfig }, Clay__ElementConfigType.SHARED)
+	elseif declaration.cornerRadius.topLeft > 0 or declaration.userData ~= nil then
+		sharedConfig = Clay__StoreSharedElementConfig({
+			backgroundColor = declaration.backgroundColor,
+			cornerRadius = declaration.cornerRadius,
+			userData = declaration.userData,
+		})
+		Clay__AttachElementConfig({ sharedElementConfig = sharedConfig }, Clay__ElementConfigType.SHARED)
+	end
+
+	if declaration.image.imageData ~= nil then
+		local imageConfig = Clay__StoreImageElementConfig(declaration.image)
+		Clay__AttachElementConfig({ imageElementConfig = imageConfig }, Clay__ElementConfigType.IMAGE)
+	end
+
+	if declaration.floating.attachTo ~= 0 then
+		local floatingConfig = declaration.floating
+		local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 2]
+		local hierarchicalParent = context.layoutElements.internalArray + parentIdx
+
+		local clipElementId = 0
+		if floatingConfig.attachTo == 1 then
+			floatingConfig.parentId = hierarchicalParent.id
+			if context.openClipElementStack.length > 0 then
+				clipElementId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
+			end
+		elseif floatingConfig.attachTo == 2 then
+			local parentItem = Clay__GetHashMapItem(floatingConfig.parentId)
+			if parentItem then
+			end
+		elseif floatingConfig.attachTo == 3 then
+		end
+
+		local currentElemIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
+
+		local root = array_add(context.layoutElementTreeRoots, ffi.new("Clay__LayoutElementTreeRoot"))
+		root.layoutElementIndex = currentElemIdx
+		root.parentId = floatingConfig.parentId
+		root.clipElementId = clipElementId
+		root.zIndex = floatingConfig.zIndex
+
+		Clay__AttachElementConfig(
+			{ floatingElementConfig = Clay__StoreFloatingElementConfig(floatingConfig) },
+			Clay__ElementConfigType.FLOATING
+		)
+	end
+
+	if declaration.custom.customData ~= nil then
+		local customConfig = Clay__StoreCustomElementConfig(declaration.custom)
+		Clay__AttachElementConfig({ customElementConfig = customConfig }, Clay__ElementConfigType.CUSTOM)
+	end
+
+	if declaration.clip.horizontal or declaration.clip.vertical then
+		local clipConfig = Clay__StoreClipElementConfig(declaration.clip)
+		Clay__AttachElementConfig({ clipElementConfig = clipConfig }, Clay__ElementConfigType.CLIP)
+
+		int32_array_add(context.openClipElementStack, openLayoutElement.id)
+
+		local found = false
+		for i = 0, context.scrollContainerDatas.length - 1 do
+			if context.scrollContainerDatas.internalArray[i].elementId == openLayoutElement.id then
+				context.scrollContainerDatas.internalArray[i].layoutElement = openLayoutElement
+				context.scrollContainerDatas.internalArray[i].openThisFrame = true
+				found = true
+			end
+		end
+		if not found then
+			local scrollData = array_add(context.scrollContainerDatas, ffi.new("Clay__ScrollContainerDataInternal"))
+			scrollData.layoutElement = openLayoutElement
+			scrollData.elementId = openLayoutElement.id
+			scrollData.openThisFrame = true
+			scrollData.scrollOrigin = { x = -1, y = -1 }
+		end
+	end
+
+	if
+		declaration.border.width.left > 0
+		or declaration.border.width.right > 0
+		or declaration.border.width.top > 0
+		or declaration.border.width.bottom > 0
+		or declaration.border.width.betweenChildren > 0
+	then
+		local borderConfig = Clay__StoreBorderElementConfig(declaration.border)
+		Clay__AttachElementConfig({ borderElementConfig = borderConfig }, Clay__ElementConfigType.BORDER)
+	end
+
+	if declaration.aspectRatio.aspectRatio > 0 then
+		local aspectConfig = Clay__StoreAspectRatioElementConfig(declaration.aspectRatio)
+		Clay__AttachElementConfig({ aspectRatioElementConfig = aspectConfig }, Clay__ElementConfigType.ASPECT)
+		int32_array_add(context.aspectRatioElementIndexes, context.layoutElements.length - 1)
 	end
 end
 
@@ -575,7 +834,7 @@ end
 
 local function Clay__SizeContainersAlongAxis(xAxis)
 	local bfsBuffer = context.layoutElementChildrenBuffer
-	local resizableContainerBuffer = context.openLayoutElementStack -- Reuse buffer
+	local resizableContainerBuffer = context.openLayoutElementStack -- Reuse buffer as scratch
 
 	for rootIndex = 0, context.layoutElementTreeRoots.length - 1 do
 		bfsBuffer.length = 0
@@ -585,7 +844,24 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 
 		-- Size floating containers to parent
 		if Clay__ElementHasConfig(rootElement, Clay__ElementConfigType.FLOATING) then
-			-- Logic omitted for brevity, similar to C
+			local floatingConfig =
+				Clay__FindElementConfigWithType(rootElement, Clay__ElementConfigType.FLOATING).floatingElementConfig
+			local parentItem = Clay__GetHashMapItem(floatingConfig.parentId)
+			if parentItem ~= nil then
+				local parentElement = parentItem.layoutElement
+				if rootElement.layoutConfig.sizing.width.type == Clay__SizingType.GROW then
+					rootElement.dimensions.width = parentElement.dimensions.width
+				elseif rootElement.layoutConfig.sizing.width.type == Clay__SizingType.PERCENT then
+					rootElement.dimensions.width = parentElement.dimensions.width
+						* rootElement.layoutConfig.sizing.width.size.percent
+				end
+				if rootElement.layoutConfig.sizing.height.type == Clay__SizingType.GROW then
+					rootElement.dimensions.height = parentElement.dimensions.height
+				elseif rootElement.layoutConfig.sizing.height.type == Clay__SizingType.PERCENT then
+					rootElement.dimensions.height = parentElement.dimensions.height
+						* rootElement.layoutConfig.sizing.height.size.percent
+				end
+			end
 		end
 
 		-- Size root
@@ -694,46 +970,139 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 			-- Pass 3: Distribute Free Space
 			if sizingAlongAxis then
 				local sizeToDistribute = parentSize - parentPadding - innerContentSize
-				if sizeToDistribute < 0 then -- Compress
-					while sizeToDistribute < -CLAY__EPSILON and resizableContainerBuffer.length > 0 do
-						local shrinkPerChild = sizeToDistribute / resizableContainerBuffer.length
-						for k = 0, resizableContainerBuffer.length - 1 do
-							local idx = int32_array_get(resizableContainerBuffer, k)
-							local child = context.layoutElements.internalArray + idx
-							local current = xAxis and child.dimensions.width or child.dimensions.height
-							local min = xAxis and child.minDimensions.width or child.minDimensions.height
-							local target = current + shrinkPerChild
-							if target < min then
-								target = min
-							end -- Should remove from buffer
-							if xAxis then
-								child.dimensions.width = target
-							else
-								child.dimensions.height = target
+				-- Compress
+				if sizeToDistribute < 0 then
+					-- If parent clips, don't compress children
+					local clipConfig = Clay__FindElementConfigWithType(parent, Clay__ElementConfigType.CLIP)
+					local canClip = clipConfig
+						and (
+							(xAxis and clipConfig.clipElementConfig.horizontal)
+							or (not xAxis and clipConfig.clipElementConfig.vertical)
+						)
+
+					if not canClip then
+						while sizeToDistribute < -CLAY__EPSILON and resizableContainerBuffer.length > 0 do
+							local largest = 0.0
+							local secondLargest = 0.0
+							local widthToAdd = sizeToDistribute -- negative value
+
+							-- Find largest and second largest to determine safe compression step
+							for k = 0, resizableContainerBuffer.length - 1 do
+								local idx = int32_array_get(resizableContainerBuffer, k)
+								local child = context.layoutElements.internalArray + idx
+								local childSize = xAxis and child.dimensions.width or child.dimensions.height
+								if not Clay__FloatEqual(childSize, largest) then
+									if childSize > largest then
+										secondLargest = largest
+										largest = childSize
+									elseif childSize > secondLargest then
+										secondLargest = childSize
+									end
+								end
 							end
-							sizeToDistribute = sizeToDistribute - (target - current)
+
+							if secondLargest > 0 then
+								widthToAdd = secondLargest - largest
+							end
+							widthToAdd = CLAY__MAX(widthToAdd, sizeToDistribute / resizableContainerBuffer.length)
+
+							local k = 0
+							while k < resizableContainerBuffer.length do
+								local idx = int32_array_get(resizableContainerBuffer, k)
+								local child = context.layoutElements.internalArray + idx
+								local current = xAxis and child.dimensions.width or child.dimensions.height
+								local min = xAxis and child.minDimensions.width or child.minDimensions.height
+
+								if Clay__FloatEqual(current, largest) then
+									local target = current + widthToAdd
+									if target <= min then
+										target = min
+										int32_array_remove_swapback(resizableContainerBuffer, k)
+										-- Don't increment k so we check swapped element
+									else
+										k = k + 1
+									end
+
+									if xAxis then
+										child.dimensions.width = target
+									else
+										child.dimensions.height = target
+									end
+
+									sizeToDistribute = sizeToDistribute - (target - current)
+								else
+									k = k + 1
+								end
+							end
 						end
-						break -- Prevent infinite loop in this port
 					end
-				elseif sizeToDistribute > 0 and growContainerCount > 0 then -- Expand
-					local growPerChild = sizeToDistribute / growContainerCount
-					for k = 0, resizableContainerBuffer.length - 1 do
+
+				-- Expand
+				elseif sizeToDistribute > 0 and growContainerCount > 0 then
+					-- Filter buffer to only include GROW elements
+					local k = 0
+					while k < resizableContainerBuffer.length do
 						local idx = int32_array_get(resizableContainerBuffer, k)
 						local child = context.layoutElements.internalArray + idx
 						local sType = xAxis and child.layoutConfig.sizing.width.type
 							or child.layoutConfig.sizing.height.type
-						if sType == Clay__SizingType.GROW then
+						if sType ~= Clay__SizingType.GROW then
+							int32_array_remove_swapback(resizableContainerBuffer, k)
+						else
+							k = k + 1
+						end
+					end
+
+					while sizeToDistribute > CLAY__EPSILON and resizableContainerBuffer.length > 0 do
+						local smallest = CLAY__MAXFLOAT
+						local secondSmallest = CLAY__MAXFLOAT
+						local widthToAdd = sizeToDistribute
+
+						for k = 0, resizableContainerBuffer.length - 1 do
+							local idx = int32_array_get(resizableContainerBuffer, k)
+							local child = context.layoutElements.internalArray + idx
+							local childSize = xAxis and child.dimensions.width or child.dimensions.height
+							if not Clay__FloatEqual(childSize, smallest) then
+								if childSize < smallest then
+									secondSmallest = smallest
+									smallest = childSize
+								elseif childSize < secondSmallest then
+									secondSmallest = childSize
+								end
+							end
+						end
+
+						if secondSmallest ~= CLAY__MAXFLOAT then
+							widthToAdd = secondSmallest - smallest
+						end
+						widthToAdd = CLAY__MIN(widthToAdd, sizeToDistribute / resizableContainerBuffer.length)
+
+						local k = 0
+						while k < resizableContainerBuffer.length do
+							local idx = int32_array_get(resizableContainerBuffer, k)
+							local child = context.layoutElements.internalArray + idx
 							local current = xAxis and child.dimensions.width or child.dimensions.height
 							local max = xAxis and child.layoutConfig.sizing.width.size.minMax.max
 								or child.layoutConfig.sizing.height.size.minMax.max
-							local target = current + growPerChild
-							if target > max then
-								target = max
-							end
-							if xAxis then
-								child.dimensions.width = target
+
+							if Clay__FloatEqual(current, smallest) then
+								local target = current + widthToAdd
+								if target >= max then
+									target = max
+									int32_array_remove_swapback(resizableContainerBuffer, k)
+								else
+									k = k + 1
+								end
+
+								if xAxis then
+									child.dimensions.width = target
+								else
+									child.dimensions.height = target
+								end
+
+								sizeToDistribute = sizeToDistribute - (target - current)
 							else
-								child.dimensions.height = target
+								k = k + 1
 							end
 						end
 					end
@@ -744,12 +1113,26 @@ local function Clay__SizeContainersAlongAxis(xAxis)
 					local idx = int32_array_get(resizableContainerBuffer, k)
 					local child = context.layoutElements.internalArray + idx
 					local childSizing = xAxis and child.layoutConfig.sizing.width or child.layoutConfig.sizing.height
+					local minSize = xAxis and child.minDimensions.width or child.minDimensions.height
 					local maxSize = parentSize - parentPadding
+
+					-- If parent scrolls, grow elements expand to content size, not parent size
+					if Clay__ElementHasConfig(parent, Clay__ElementConfigType.CLIP) then
+						local clipConfig =
+							Clay__FindElementConfigWithType(parent, Clay__ElementConfigType.CLIP).clipElementConfig
+						local directionCheck = (xAxis and clipConfig.horizontal) or (not xAxis and clipConfig.vertical)
+						if directionCheck then
+							maxSize = CLAY__MAX(maxSize, innerContentSize)
+						end
+					end
+
 					local val = xAxis and child.dimensions.width or child.dimensions.height
 					if childSizing.type == Clay__SizingType.GROW then
 						val = maxSize
+						val = CLAY__MIN(val, childSizing.size.minMax.max)
 					end
-					val = CLAY__MIN(val, maxSize)
+
+					val = CLAY__MAX(minSize, CLAY__MIN(val, maxSize))
 					if xAxis then
 						child.dimensions.width = val
 					else
@@ -779,47 +1162,54 @@ local function Clay__CalculateFinalLayout()
 		local textData = context.textElementData.internalArray + i
 		local elem = context.layoutElements.internalArray + textData.elementIndex
 		local config = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.TEXT).textElementConfig
-
 		local measured = Clay__MeasureTextCached(textData.text, config)
 
-		-- Wrapping Logic
 		local lineWidth = 0
 		local lineHeight = config.lineHeight > 0 and config.lineHeight or textData.preferredDimensions.height
 		local lineLength = 0
 		local lineStart = 0
+		local startWrappedLinesCount = context.wrappedTextLines.length
 
-		-- Simplified wrap logic for port brevity - relies on measured words
 		local wordIdx = measured.measuredWordsStartIndex
 		while wordIdx ~= -1 do
 			local word = context.measuredWords.internalArray + wordIdx
-			if lineWidth + word.width > elem.dimensions.width then
-				-- Add Line
-				array_add(
-					context.wrappedTextLines,
-					{
-						dimensions = { width = lineWidth, height = lineHeight },
-						line = { length = lineLength, chars = textData.text.chars + lineStart },
-					}
-				)
+			local shouldWrap = false
+			if config.wrapMode == Clay_TextElementConfigWrapMode.WORDS then
+				shouldWrap = (lineWidth + word.width > elem.dimensions.width)
+			elseif config.wrapMode == Clay_TextElementConfigWrapMode.NEWLINES then
+				shouldWrap = (word.length == 0)
+			end
+
+			if shouldWrap and lineLength > 0 then
+				array_add(context.wrappedTextLines, {
+					dimensions = { width = lineWidth, height = lineHeight },
+					line = { length = lineLength, chars = textData.text.chars + lineStart },
+				})
 				lineWidth = 0
 				lineLength = 0
 				lineStart = word.startOffset
 			end
+
+			if word.length == 0 then
+				wordIdx = word.next
+				goto continue_word
+			end
+
 			lineWidth = lineWidth + word.width
 			lineLength = lineLength + word.length
 			wordIdx = word.next
+			::continue_word::
 		end
-		-- Add last line
+
 		if lineLength > 0 then
-			array_add(
-				context.wrappedTextLines,
-				{
-					dimensions = { width = lineWidth, height = lineHeight },
-					line = { length = lineLength, chars = textData.text.chars + lineStart },
-				}
-			)
+			array_add(context.wrappedTextLines, {
+				dimensions = { width = lineWidth, height = lineHeight },
+				line = { length = lineLength, chars = textData.text.chars + lineStart },
+			})
 		end
-		elem.dimensions.height = lineHeight * (textData.wrappedLines.length > 0 and textData.wrappedLines.length or 1)
+
+		local wrappedCount = context.wrappedTextLines.length - startWrappedLinesCount
+		elem.dimensions.height = lineHeight * CLAY__MAX(wrappedCount, 1)
 	end
 
 	-- 3. Aspect Ratio Height
@@ -831,25 +1221,183 @@ local function Clay__CalculateFinalLayout()
 	end
 
 	-- 4. DFS for Height Propagation
-	-- (Omitted DFS loop for brevity, logic matches C: traverse tree, propagate height up)
+	local dfsBuffer = context.layoutElementTreeNodeArray1
+	local tempNode = ffi.new("Clay__LayoutElementTreeNode")
+	dfsBuffer.length = 0
+	for i = 0, context.layoutElementTreeRoots.length - 1 do
+		local root = context.layoutElementTreeRoots.internalArray + i
+		context.treeNodeVisited.internalArray[dfsBuffer.length] = false
+		local node = array_add(dfsBuffer, ffi.new("Clay__LayoutElementTreeNode"))
+		node.layoutElement = context.layoutElements.internalArray + root.layoutElementIndex
+	end
+
+	while dfsBuffer.length > 0 do
+		local nodeIdx = dfsBuffer.length - 1
+		local node = dfsBuffer.internalArray + nodeIdx
+		local currentElement = node.layoutElement
+
+		if not context.treeNodeVisited.internalArray[nodeIdx] then
+			context.treeNodeVisited.internalArray[nodeIdx] = true
+			if
+				Clay__ElementHasConfig(currentElement, Clay__ElementConfigType.TEXT)
+				or currentElement.childrenOrTextContent.children.length == 0
+			then
+				dfsBuffer.length = dfsBuffer.length - 1
+				goto continue_dfs
+			end
+			-- Push children (in reverse order so they are processed in correct order)
+			for i = currentElement.childrenOrTextContent.children.length - 1, 0, -1 do
+				context.treeNodeVisited.internalArray[dfsBuffer.length] = false
+				local childNode = array_add(dfsBuffer, ffi.new("Clay__LayoutElementTreeNode"))
+				childNode.layoutElement = context.layoutElements.internalArray
+					+ currentElement.childrenOrTextContent.children.elements[i]
+			end
+			goto continue_dfs
+		end
+
+		-- Visited (Backtracking)
+		dfsBuffer.length = dfsBuffer.length - 1
+		local layoutConfig = currentElement.layoutConfig
+		if layoutConfig.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
+			for j = 0, currentElement.childrenOrTextContent.children.length - 1 do
+				local child = context.layoutElements.internalArray
+					+ currentElement.childrenOrTextContent.children.elements[j]
+				local h = CLAY__MAX(
+					child.dimensions.height + layoutConfig.padding.top + layoutConfig.padding.bottom,
+					currentElement.dimensions.height
+				)
+				currentElement.dimensions.height = CLAY__MIN(
+					CLAY__MAX(h, layoutConfig.sizing.height.size.minMax.min),
+					layoutConfig.sizing.height.size.minMax.max
+				)
+			end
+		elseif layoutConfig.layoutDirection == Clay_LayoutDirection.TOP_TO_BOTTOM then
+			local contentHeight = layoutConfig.padding.top + layoutConfig.padding.bottom
+			for j = 0, currentElement.childrenOrTextContent.children.length - 1 do
+				local child = context.layoutElements.internalArray
+					+ currentElement.childrenOrTextContent.children.elements[j]
+				contentHeight = contentHeight + child.dimensions.height
+			end
+			contentHeight = contentHeight
+				+ (CLAY__MAX(currentElement.childrenOrTextContent.children.length - 1, 0) * layoutConfig.childGap)
+			currentElement.dimensions.height = CLAY__MIN(
+				CLAY__MAX(contentHeight, layoutConfig.sizing.height.size.minMax.min),
+				layoutConfig.sizing.height.size.minMax.max
+			)
+		end
+
+		::continue_dfs::
+	end
 
 	-- 5. Size Y
 	Clay__SizeContainersAlongAxis(false)
 
 	-- 6. Render Commands
 	context.renderCommands.length = 0
-	local dfsBuffer = context.layoutElementTreeNodeArray1
 	dfsBuffer.length = 0
 
 	for i = 0, context.layoutElementTreeRoots.length - 1 do
 		local root = context.layoutElementTreeRoots.internalArray + i
 		local elem = context.layoutElements.internalArray + root.layoutElementIndex
+
+		local rootPosition = { x = 0, y = 0 }
+
+		if root.parentId ~= 0 then
+			local parentItem = Clay__GetHashMapItem(root.parentId)
+			if parentItem then
+				local parentBB = parentItem.boundingBox
+				local floatingConfig =
+					Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.FLOATING).floatingElementConfig
+
+				if
+					floatingConfig.attachPoints.parent == 0
+					or floatingConfig.attachPoints.parent == 3
+					or floatingConfig.attachPoints.parent == 6
+				then
+					rootPosition.x = parentBB.x
+				elseif
+					floatingConfig.attachPoints.parent == 1
+					or floatingConfig.attachPoints.parent == 4
+					or floatingConfig.attachPoints.parent == 7
+				then
+					rootPosition.x = parentBB.x + (parentBB.width / 2)
+				elseif
+					floatingConfig.attachPoints.parent == 2
+					or floatingConfig.attachPoints.parent == 5
+					or floatingConfig.attachPoints.parent == 8
+				then
+					rootPosition.x = parentBB.x + parentBB.width
+				end
+
+				if
+					floatingConfig.attachPoints.element == 1
+					or floatingConfig.attachPoints.element == 4
+					or floatingConfig.attachPoints.element == 7
+				then
+					rootPosition.x = rootPosition.x - (elem.dimensions.width / 2)
+				elseif
+					floatingConfig.attachPoints.element == 2
+					or floatingConfig.attachPoints.element == 5
+					or floatingConfig.attachPoints.element == 8
+				then
+					rootPosition.x = rootPosition.x - elem.dimensions.width
+				end
+
+				if
+					floatingConfig.attachPoints.parent == 0
+					or floatingConfig.attachPoints.parent == 1
+					or floatingConfig.attachPoints.parent == 2
+				then
+					rootPosition.y = parentBB.y
+				elseif
+					floatingConfig.attachPoints.parent == 3
+					or floatingConfig.attachPoints.parent == 4
+					or floatingConfig.attachPoints.parent == 5
+				then
+					rootPosition.y = parentBB.y + (parentBB.height / 2)
+				elseif
+					floatingConfig.attachPoints.parent == 6
+					or floatingConfig.attachPoints.parent == 7
+					or floatingConfig.attachPoints.parent == 8
+				then
+					rootPosition.y = parentBB.y + parentBB.height
+				end
+
+				if
+					floatingConfig.attachPoints.element == 3
+					or floatingConfig.attachPoints.element == 4
+					or floatingConfig.attachPoints.element == 5
+				then
+					rootPosition.y = rootPosition.y - (elem.dimensions.height / 2)
+				elseif
+					floatingConfig.attachPoints.element == 6
+					or floatingConfig.attachPoints.element == 7
+					or floatingConfig.attachPoints.element == 8
+				then
+					rootPosition.y = rootPosition.y - elem.dimensions.height
+				end
+
+				rootPosition.x = rootPosition.x + floatingConfig.offset.x
+				rootPosition.y = rootPosition.y + floatingConfig.offset.y
+			end
+		end
+
 		local node = array_add(dfsBuffer, ffi.new("Clay__LayoutElementTreeNode"))
 		node.layoutElement = elem
-		node.position.x = 0
-		node.position.y = 0 -- Actual logic uses float root positioning
+		node.position.x = rootPosition.x
+		node.position.y = rootPosition.y
 		node.nextChildOffset.x = elem.layoutConfig.padding.left
 		node.nextChildOffset.y = elem.layoutConfig.padding.top
+
+		if root.clipElementId ~= 0 then
+			local clipItem = Clay__GetHashMapItem(root.clipElementId)
+			if clipItem then
+				local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+				cmd.boundingBox = clipItem.boundingBox
+				cmd.commandType = Clay_RenderCommandType.SCISSOR_START
+				cmd.zIndex = root.zIndex
+			end
+		end
 	end
 
 	-- Reset visited
@@ -864,10 +1412,46 @@ local function Clay__CalculateFinalLayout()
 		local config = elem.layoutConfig
 
 		if context.treeNodeVisited.internalArray[nodeIdx] then
-			dfsBuffer.length = dfsBuffer.length - 1 -- Pop
-			-- Scissor End would go here
+			-- Backtracking: Handle End Scissor and Borders
+			local closeClipElement = false
+			if Clay__ElementHasConfig(elem, Clay__ElementConfigType.CLIP) then
+				closeClipElement = true
+			end
+
+			-- Borders
+			if Clay__ElementHasConfig(elem, Clay__ElementConfigType.BORDER) then
+				local bbox = {
+					x = node.position.x,
+					y = node.position.y,
+					width = elem.dimensions.width,
+					height = elem.dimensions.height,
+				}
+				if not Clay__ElementIsOffscreen(bbox) then
+					local borderConfig =
+						Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.BORDER).borderElementConfig
+					local sharedConfig = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.SHARED)
+					local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+					cmd.boundingBox = bbox
+					cmd.renderData.border.color = borderConfig.color
+					cmd.renderData.border.cornerRadius = sharedConfig and sharedConfig.sharedElementConfig.cornerRadius
+						or ffi.new("Clay_CornerRadius")
+					cmd.renderData.border.width = borderConfig.width
+					cmd.userData = sharedConfig and sharedConfig.sharedElementConfig.userData or nil
+					cmd.id = elem.id
+					cmd.commandType = Clay_RenderCommandType.BORDER
+				end
+			end
+
+			if closeClipElement then
+				local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+				cmd.commandType = Clay_RenderCommandType.SCISSOR_END
+				cmd.id = elem.id
+			end
+
+			dfsBuffer.length = dfsBuffer.length - 1
 		else
 			context.treeNodeVisited.internalArray[nodeIdx] = true
+
 			local bbox = {
 				x = node.position.x,
 				y = node.position.y,
@@ -875,26 +1459,187 @@ local function Clay__CalculateFinalLayout()
 				height = elem.dimensions.height,
 			}
 
-			-- Generate Commands (Rectangle, Text, etc)
-			if Clay__ElementHasConfig(elem, Clay__ElementConfigType.SHARED) then
-				local shared = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.SHARED).sharedElementConfig
-				if shared.backgroundColor.a > 0 then
+			-- Update Hash Map Bounding Box
+			local hashMapItem = Clay__GetHashMapItem(elem.id)
+			if hashMapItem then
+				hashMapItem.boundingBox = bbox
+			end
+
+			local shouldRender = not Clay__ElementIsOffscreen(bbox)
+			local shared = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.SHARED)
+			local userData = shared and shared.sharedElementConfig.userData or nil
+			local zIndex = 0 -- Assuming 0 if not tracked via tree root
+
+			-- SCISSOR START
+			if Clay__ElementHasConfig(elem, Clay__ElementConfigType.CLIP) then
+				local clipConfig = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.CLIP).clipElementConfig
+				local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+				cmd.boundingBox = bbox
+				cmd.renderData.clip.horizontal = clipConfig.horizontal
+				cmd.renderData.clip.vertical = clipConfig.vertical
+				cmd.commandType = Clay_RenderCommandType.SCISSOR_START
+				cmd.id = elem.id
+				cmd.zIndex = zIndex
+			end
+
+			if shouldRender then
+				-- RECTANGLE
+				if shared and shared.sharedElementConfig.backgroundColor.a > 0 then
 					local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
 					cmd.boundingBox = bbox
-					cmd.renderData.rectangle.backgroundColor = shared.backgroundColor
-					cmd.renderData.rectangle.cornerRadius = shared.cornerRadius
+					cmd.renderData.rectangle.backgroundColor = shared.sharedElementConfig.backgroundColor
+					cmd.renderData.rectangle.cornerRadius = shared.sharedElementConfig.cornerRadius
 					cmd.commandType = Clay_RenderCommandType.RECTANGLE
+					cmd.userData = userData
 					cmd.id = elem.id
+					cmd.zIndex = zIndex
+				end
+
+				-- TEXT
+				if Clay__ElementHasConfig(elem, Clay__ElementConfigType.TEXT) then
+					local textConfig =
+						Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.TEXT).textElementConfig
+					local textData = elem.childrenOrTextContent.textElementData
+
+					local lineHeight = textConfig.lineHeight > 0 and textConfig.lineHeight
+						or textData.preferredDimensions.height
+					local yPos = (lineHeight - textData.preferredDimensions.height) / 2
+
+					for i = 0, textData.wrappedLines.length - 1 do
+						local line = textData.wrappedLines.internalArray + i
+						if line.line.length > 0 then
+							local offset = 0
+							if textConfig.textAlignment == Clay_TextAlignment.CENTER then
+								offset = (elem.dimensions.width - line.dimensions.width) / 2
+							elseif textConfig.textAlignment == Clay_TextAlignment.RIGHT then
+								offset = elem.dimensions.width - line.dimensions.width
+							end
+
+							local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+							cmd.boundingBox = {
+								x = bbox.x + offset,
+								y = bbox.y + yPos,
+								width = line.dimensions.width,
+								height = line.dimensions.height,
+							}
+							cmd.renderData.text.stringContents = { length = line.line.length, chars = line.line.chars }
+							cmd.renderData.text.textColor = textConfig.textColor
+							cmd.renderData.text.fontId = textConfig.fontId
+							cmd.renderData.text.fontSize = textConfig.fontSize
+							cmd.renderData.text.letterSpacing = textConfig.letterSpacing
+							cmd.renderData.text.lineHeight = textConfig.lineHeight
+							cmd.userData = textConfig.userData
+							cmd.id = elem.id
+							cmd.zIndex = zIndex
+							cmd.commandType = Clay_RenderCommandType.TEXT
+						end
+						yPos = yPos + lineHeight
+					end
+				end
+
+				-- IMAGE
+				if Clay__ElementHasConfig(elem, Clay__ElementConfigType.IMAGE) then
+					local imageConfig =
+						Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.IMAGE).imageElementConfig
+					local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+					cmd.boundingBox = bbox
+					cmd.renderData.image.imageData = imageConfig.imageData
+					cmd.renderData.image.cornerRadius = shared and shared.sharedElementConfig.cornerRadius
+						or ffi.new("Clay_CornerRadius")
+					cmd.renderData.image.backgroundColor = shared and shared.sharedElementConfig.backgroundColor
+						or ffi.new("Clay_Color")
+					cmd.commandType = Clay_RenderCommandType.IMAGE
+					cmd.userData = userData
+					cmd.id = elem.id
+					cmd.zIndex = zIndex
+				end
+
+				-- CUSTOM
+				if Clay__ElementHasConfig(elem, Clay__ElementConfigType.CUSTOM) then
+					local customConfig =
+						Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.CUSTOM).customElementConfig
+					local cmd = array_add(context.renderCommands, ffi.new("Clay_RenderCommand"))
+					cmd.boundingBox = bbox
+					cmd.renderData.custom.customData = customConfig.customData
+					cmd.renderData.custom.cornerRadius = shared and shared.sharedElementConfig.cornerRadius
+						or ffi.new("Clay_CornerRadius")
+					cmd.renderData.custom.backgroundColor = shared and shared.sharedElementConfig.backgroundColor
+						or ffi.new("Clay_Color")
+					cmd.commandType = Clay_RenderCommandType.CUSTOM
+					cmd.userData = userData
+					cmd.id = elem.id
+					cmd.zIndex = zIndex
 				end
 			end
-			-- (Text command generation logic would go here)
 
-			-- Add Children
+			if not Clay__ElementHasConfig(elem, Clay__ElementConfigType.TEXT) then
+				local contentSize = { width = 0, height = 0 }
+				if config.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
+					for i = 0, elem.childrenOrTextContent.children.length - 1 do
+						local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
+						contentSize.width = contentSize.width + child.dimensions.width
+						contentSize.height = CLAY__MAX(contentSize.height, child.dimensions.height)
+					end
+					contentSize.width = contentSize.width + (CLAY__MAX(elem.childrenOrTextContent.children.length - 1, 0) * config.childGap)
+					local extraSpace = elem.dimensions.width - (config.padding.left + config.padding.right) - contentSize.width
+					
+					if config.childAlignment.x == Clay_AlignX.LEFT then
+						extraSpace = 0
+					elseif config.childAlignment.x == Clay_AlignX.CENTER then
+						extraSpace = extraSpace / 2
+					end
+					
+					node.nextChildOffset.x = node.nextChildOffset.x + extraSpace
+				else
+					for i = 0, elem.childrenOrTextContent.children.length - 1 do
+						local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
+						contentSize.width = CLAY__MAX(contentSize.width, child.dimensions.width)
+						contentSize.height = contentSize.height + child.dimensions.height
+					end
+					contentSize.height = contentSize.height + (CLAY__MAX(elem.childrenOrTextContent.children.length - 1, 0) * config.childGap)
+					local extraSpace = elem.dimensions.height - (config.padding.top + config.padding.bottom) - contentSize.height
+					
+					if config.childAlignment.y == Clay_AlignY.TOP then
+						extraSpace = 0
+					elseif config.childAlignment.y == Clay_AlignY.CENTER then
+						extraSpace = extraSpace / 2
+					end
+					
+					node.nextChildOffset.y = node.nextChildOffset.y + extraSpace
+				end
+			end
+
 			if elem.childrenOrTextContent.children.length > 0 then
 				local currentOffset = { x = node.nextChildOffset.x, y = node.nextChildOffset.y }
+
 				for j = 0, elem.childrenOrTextContent.children.length - 1 do
 					local childIdx = elem.childrenOrTextContent.children.elements[j]
 					local child = context.layoutElements.internalArray + childIdx
+
+					-- Alignment Logic for Child Axis
+					if config.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
+						currentOffset.y = config.padding.top
+						local freeSpace = elem.dimensions.height
+							- config.padding.top
+							- config.padding.bottom
+							- child.dimensions.height
+						if config.childAlignment.y == Clay_AlignY.CENTER then
+							currentOffset.y = currentOffset.y + freeSpace / 2
+						elseif config.childAlignment.y == Clay_AlignY.BOTTOM then
+							currentOffset.y = currentOffset.y + freeSpace
+						end
+					else
+						currentOffset.x = config.padding.left
+						local freeSpace = elem.dimensions.width
+							- config.padding.left
+							- config.padding.right
+							- child.dimensions.width
+						if config.childAlignment.x == Clay_AlignX.CENTER then
+							currentOffset.x = currentOffset.x + freeSpace / 2
+						elseif config.childAlignment.x == Clay_AlignX.RIGHT then
+							currentOffset.x = currentOffset.x + freeSpace
+						end
+					end
 
 					local childNode = array_add(dfsBuffer, ffi.new("Clay__LayoutElementTreeNode"))
 					childNode.layoutElement = child
@@ -908,6 +1653,38 @@ local function Clay__CalculateFinalLayout()
 						currentOffset.x = currentOffset.x + child.dimensions.width + config.childGap
 					else
 						currentOffset.y = currentOffset.y + child.dimensions.height + config.childGap
+					end
+				end
+
+				-- Reverse the added children so they are popped in 0..N order
+				local childrenCount = elem.childrenOrTextContent.children.length
+				if childrenCount > 1 then
+					local startIdx = dfsBuffer.length - childrenCount
+					local endIdx = dfsBuffer.length - 1
+					while startIdx < endIdx do
+						-- Swap
+						tempNode.layoutElement = dfsBuffer.internalArray[startIdx].layoutElement
+						tempNode.position.x = dfsBuffer.internalArray[startIdx].position.x
+						tempNode.position.y = dfsBuffer.internalArray[startIdx].position.y
+						tempNode.nextChildOffset.x = dfsBuffer.internalArray[startIdx].nextChildOffset.x
+						tempNode.nextChildOffset.y = dfsBuffer.internalArray[startIdx].nextChildOffset.y
+
+						dfsBuffer.internalArray[startIdx].layoutElement = dfsBuffer.internalArray[endIdx].layoutElement
+						dfsBuffer.internalArray[startIdx].position.x = dfsBuffer.internalArray[endIdx].position.x
+						dfsBuffer.internalArray[startIdx].position.y = dfsBuffer.internalArray[endIdx].position.y
+						dfsBuffer.internalArray[startIdx].nextChildOffset.x =
+							dfsBuffer.internalArray[endIdx].nextChildOffset.x
+						dfsBuffer.internalArray[startIdx].nextChildOffset.y =
+							dfsBuffer.internalArray[endIdx].nextChildOffset.y
+
+						dfsBuffer.internalArray[endIdx].layoutElement = tempNode.layoutElement
+						dfsBuffer.internalArray[endIdx].position.x = tempNode.position.x
+						dfsBuffer.internalArray[endIdx].position.y = tempNode.position.y
+						dfsBuffer.internalArray[endIdx].nextChildOffset.x = tempNode.nextChildOffset.x
+						dfsBuffer.internalArray[endIdx].nextChildOffset.y = tempNode.nextChildOffset.y
+
+						startIdx = startIdx + 1
+						endIdx = endIdx - 1
 					end
 				end
 			end
@@ -950,27 +1727,31 @@ function M.begin_layout()
 	Clay__InitializeEphemeralMemory(context)
 	context.generation = context.generation + 1
 	next_element_id = 1
-	M.open_element(
-		ffi.new(
-			"Clay_LayoutConfig",
-			{
-				sizing = {
-					width = {
-						type = 3,
-						size = {
-							minMax = { min = context.layoutDimensions.width, max = context.layoutDimensions.width },
-						},
-					},
-					height = {
-						type = 3,
-						size = {
-							minMax = { min = context.layoutDimensions.height, max = context.layoutDimensions.height },
+	M.open_element()
+	M.configure_open_element(ffi.new("Clay_ElementDeclaration", {
+		layout = ffi.new("Clay_LayoutConfig", {
+			sizing = {
+				width = {
+					type = 3,
+					size = {
+						minMax = {
+							min = context.layoutDimensions.width,
+							max = context.layoutDimensions.width,
 						},
 					},
 				},
-			}
-		)
-	)
+				height = {
+					type = 3,
+					size = {
+						minMax = {
+							min = context.layoutDimensions.height,
+							max = context.layoutDimensions.height,
+						},
+					},
+				},
+			},
+		}),
+	}))
 	context.layoutElementTreeRoots.internalArray[0] = { layoutElementIndex = 0 }
 	context.layoutElementTreeRoots.length = 1
 end
@@ -981,19 +1762,52 @@ function M.end_layout()
 	return context.renderCommands
 end
 
-function M.open_element(config)
+local function Clay__GenerateIdForAnonymousElement(openLayoutElement)
+	local parent = context.layoutElements.internalArray
+		+ int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 2)
+	local childrenCount = parent.childrenOrTextContent.children.length
+	local offset = childrenCount + parent.floatingChildrenCount
+	local elementId = Clay__HashNumber(offset, parent.id)
+
+	openLayoutElement.id = elementId.id
+	Clay__AddHashMapItem(elementId, openLayoutElement)
+	array_add(context.layoutElementIdStrings, elementId.stringId)
+	return elementId
+end
+
+function M.open_element()
+	if context.layoutElements.length >= context.layoutElements.capacity - 1 then
+		return
+	end
+
 	local elem = array_add(context.layoutElements, ffi.new("Clay_LayoutElement"))
-	elem.id = next_element_id
-	next_element_id = next_element_id + 1
-	elem.layoutConfig = Clay__StoreLayoutConfig(config)
 
 	if context.openLayoutElementStack.length > 0 then
-		local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
+		local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 1)
 		local parent = context.layoutElements.internalArray + parentIdx
+
+		local elementId = Clay__GenerateIdForAnonymousElement(elem)
+
 		parent.childrenOrTextContent.children.length = parent.childrenOrTextContent.children.length + 1
 		int32_array_add(context.layoutElementChildrenBuffer, context.layoutElements.length - 1)
+
+		local clipId = 0
+		if context.openClipElementStack.length > 0 then
+			clipId = int32_array_get(context.openClipElementStack, context.openClipElementStack.length - 1)
+		end
+		int32_array_set(context.layoutElementClipElementIds, context.layoutElements.length - 1, clipId)
+	else
+		local elementId = Clay__HashString("Clay__RootContainer", 0)
+		elem.id = elementId.id
+		Clay__AddHashMapItem(elementId, elem)
+		array_add(context.layoutElementIdStrings, elementId.stringId)
 	end
+
 	int32_array_add(context.openLayoutElementStack, context.layoutElements.length - 1)
+end
+
+function M.configure_open_element(declaration)
+	Clay__ConfigureOpenElement(declaration)
 end
 
 function M.close_element()
@@ -1001,7 +1815,16 @@ function M.close_element()
 	local elem = context.layoutElements.internalArray + idx
 	local config = elem.layoutConfig
 
-	-- Attach Children Slice logic
+	if
+		context.openClipElementStack.length > 0
+		and (
+			Clay__ElementHasConfig(elem, Clay__ElementConfigType.CLIP)
+			or Clay__ElementHasConfig(elem, Clay__ElementConfigType.FLOATING)
+		)
+	then
+		int32_array_remove_swapback(context.openClipElementStack, context.openClipElementStack.length - 1)
+	end
+
 	local childCount = elem.childrenOrTextContent.children.length
 	if childCount > 0 then
 		elem.childrenOrTextContent.children.elements = context.layoutElementChildren.internalArray
@@ -1013,7 +1836,6 @@ function M.close_element()
 		end
 		context.layoutElementChildrenBuffer.length = context.layoutElementChildrenBuffer.length - childCount
 
-		-- Calculate Dimensions (FIT)
 		if config.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
 			local w = config.padding.left + config.padding.right
 			for i = 0, childCount - 1 do
@@ -1022,6 +1844,8 @@ function M.close_element()
 			end
 			w = w + (CLAY__MAX(childCount - 1, 0) * config.childGap)
 			elem.dimensions.width = w
+
+			elem.minDimensions.width = w
 		else
 			local h = config.padding.top + config.padding.bottom
 			for i = 0, childCount - 1 do
@@ -1030,8 +1854,44 @@ function M.close_element()
 			end
 			h = h + (CLAY__MAX(childCount - 1, 0) * config.childGap)
 			elem.dimensions.height = h
+
+			elem.minDimensions.height = h
 		end
 	end
+
+	if config.sizing.width.type ~= Clay__SizingType.PERCENT then
+		if config.sizing.width.size.minMax.max <= 0 then
+			config.sizing.width.size.minMax.max = CLAY__MAXFLOAT
+		end
+		elem.dimensions.width = CLAY__MIN(
+			CLAY__MAX(elem.dimensions.width, config.sizing.width.size.minMax.min),
+			config.sizing.width.size.minMax.max
+		)
+		elem.minDimensions.width = CLAY__MIN(
+			CLAY__MAX(elem.minDimensions.width, config.sizing.width.size.minMax.min),
+			config.sizing.width.size.minMax.max
+		)
+	else
+		elem.dimensions.width = 0
+	end
+
+	if config.sizing.height.type ~= Clay__SizingType.PERCENT then
+		if config.sizing.height.size.minMax.max <= 0 then
+			config.sizing.height.size.minMax.max = CLAY__MAXFLOAT
+		end
+		elem.dimensions.height = CLAY__MIN(
+			CLAY__MAX(elem.dimensions.height, config.sizing.height.size.minMax.min),
+			config.sizing.height.size.minMax.max
+		)
+		elem.minDimensions.height = CLAY__MIN(
+			CLAY__MAX(elem.minDimensions.height, config.sizing.height.size.minMax.min),
+			config.sizing.height.size.minMax.max
+		)
+	else
+		elem.dimensions.height = 0
+	end
+
+	Clay__UpdateAspectRatioBox(elem)
 end
 
 function M.set_measure_text(fn)

@@ -1,0 +1,4 @@
+Clay initialized successfully
+Context pointer: 0x7f3177c58040
+Render commands: 1
+  [0] id=1806997583 type=1 bbox={x=0.000000,y=0.000000,w=800.000000,h=600.000000}
