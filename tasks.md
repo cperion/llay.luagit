@@ -87,6 +87,11 @@ Implementation of the memory management and basic data structures.
      - [x] Pass 2: Calculate `innerContentSize` and `growContainerCount`.
      - [x] Pass 3: Distribute free space to `GROW` containers.
      - [x] Pass 4: Compress containers if parent doesn't fit (and not wrapping).
+ - [ ] **Final Layout (`Clay__CalculateFinalLayout`)**
+     - [ ] Port full C implementation with DFS traversal
+     - [ ] Text wrapping integration
+     - [ ] Aspect ratio scaling
+     - [ ] Z-index sorting for floating elements
 - [ ] **Final Layout (`Clay__CalculateFinalLayout`)**
     - [ ] X-Axis Sizing Pass (Call `SizeContainersAlongAxis(true)`)
     - [ ] Text Wrapping Loop (Calculate line breaks based on width)

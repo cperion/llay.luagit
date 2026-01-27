@@ -395,6 +395,22 @@ See `tools/README.md` for more details.
 
 ### Porting from clay.h Checklist
 
+**Rule: Always seek through clay.h first before implementing.** The C implementation is the source of truth—copy algorithms directly rather than rewriting from memory.
+
+```bash
+# 1. Seek through clay.h to understand the algorithm
+cd clay && rg -A 50 "function_name" clay.h | head -60
+
+# 2. Copy the C logic line-by-line, converting only:
+#    - for loops: i++ -> i = i + 1
+#    - pointers: struct->field -> struct.field
+#    - conditions: if (!x) -> if x == nil
+#    - arrays: array[i] -> array.internalArray[i]
+
+# 3. Test after each significant port
+luajit tests/run.lua
+```
+
 1. Port dependency-free types (Vector2, Color, Dimensions, BoundingBox) to ffi.lua
 2. Port config types (LayoutConfig, ElementConfig) to ffi.lua
 3. Port Context struct to ffi.lua
