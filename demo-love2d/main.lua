@@ -7,6 +7,8 @@ local llay = require("init")
 
 local WIDTH = 900
 local HEIGHT = 650
+local MIN_WIDTH = 600
+local MIN_HEIGHT = 400
 
 local commands = nil
 local hovered_element = nil
@@ -49,7 +51,9 @@ function love.load()
     
     -- Set up Love2D window
     love.window.setMode(WIDTH, HEIGHT, {
-        resizable = false,
+        resizable = true,
+        minwidth = MIN_WIDTH,
+        minheight = MIN_HEIGHT,
         vsync = true,
         centered = true
     })
@@ -375,6 +379,13 @@ function love.mousepressed(x, y, button)
         click_count = click_count + 1
         print("Clicked: " .. hovered_element)
     end
+end
+
+function love.resize(w, h)
+    WIDTH = w
+    HEIGHT = h
+    llay.set_dimensions(WIDTH, HEIGHT)
+    generate_layout()
 end
 
 function love.keypressed(key)
