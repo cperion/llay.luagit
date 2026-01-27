@@ -7,7 +7,7 @@ local M = {}
 -- Lifecycle API
 -- ==================================================================================
 
-function M.initialize(capacity, dims)
+function M.init(capacity, dims)
 	-- Helper to handle optional args
 	if type(capacity) == "table" and dims == nil then
 		dims = capacity
@@ -15,6 +15,8 @@ function M.initialize(capacity, dims)
 	end
 	return core.initialize(capacity, dims)
 end
+
+M.initialize = M.init
 
 function M.begin_layout()
 	core.begin_layout()

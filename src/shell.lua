@@ -64,10 +64,10 @@ end
 local function parse_padding(val)
 	local p = ffi.new("Clay_Padding")
 	if type(val) == "table" then
-		p.left = val.left or val.x or 0
-		p.right = val.right or val.x or 0
-		p.top = val.top or val.y or 0
-		p.bottom = val.bottom or val.y or 0
+		p.left = val.left or val.x or val[1] or 0
+		p.right = val.right or val.x or val[2] or 0
+		p.top = val.top or val.y or val[3] or 0
+		p.bottom = val.bottom or val.y or val[4] or 0
 	elseif type(val) == "number" then
 		p.left = val
 		p.right = val
@@ -133,81 +133,104 @@ local function parse_text_config(tbl)
 	return c
 end
 
+local function parse_border_config(tbl)
+	local b = ffi.new("Clay_BorderElementConfig")
+	if not tbl then
+		return b
+	end
+	if tbl.color then
+		b.color = parse_color(tbl.color)
+	end
+	if tbl.width then
+		if type(tbl.width) == "table" then
+			b.width.left = tbl.width.left or tbl.width.x or 0
+			b.width.right = tbl.width.right or tbl.width.x or 0
+			b.width.top = tbl.width.top or tbl.width.y or 0
+			b.width.bottom = tbl.width.bottom or tbl.width.y or 0
+			b.width.betweenChildren = tbl.width.betweenChildren or 0
+		else
+			b.width.left = tbl.width
+			b.width.right = tbl.width
+			b.width.top = tbl.width
+			b.width.bottom = tbl.width
+		end
+	end
+	return b
+end
+
+local function parse_floating_config(tbl)
+	local f = ffi.new("Clay_FloatingElementConfig")
+	if not tbl then
+		return f
+	end
+	if tbl.offset then
+		f.offset = { x = tbl.offset.x or 0, y = tbl.offset.y or 0 }
+	end
+	if tbl.expand then
+		f.expand = { width = tbl.expand.width or 0, height = tbl.expand.height or 0 }
+	end
+	f.parentId = tbl.parentId or 0
+	f.zIndex = tbl.zIndex or 0
+	f.attachPoints.element = tbl.attachPoints and tbl.attachPoints.element or 0
+	f.attachPoints.parent = tbl.attachPoints and tbl.attachPoints.parent or 0
+	f.pointerCaptureMode = tbl.pointerCaptureMode or M.PointerCapture.CAPTURE
+	f.attachTo = tbl.attachTo or 0
+	f.clipTo = tbl.clipTo or 0
+	return f
+end
+
+local function parse_corner_radius(val)
+	local c = ffi.new("Clay_CornerRadius")
+	if type(val) == "number" then
+		c.topLeft = val
+		c.topRight = val
+		c.bottomLeft = val
+		c.bottomRight = val
+	elseif type(val) == "table" then
+		c.topLeft = val.topLeft or 0
+		c.topRight = val.topRight or 0
+		c.bottomLeft = val.bottomLeft or 0
+		c.bottomRight = val.bottomRight or 0
+	end
+	return c
+end
+
 -- ==================================================================================
 -- Element Constructors
 -- ==================================================================================
 
 function M.Element(config, children_fn)
-	-- 1. Create Layout Config
-	local layoutConfig = parse_layout_config(config.layout)
+	local declaration = ffi.new("Clay_ElementDeclaration")
 
-	-- 2. Open Element
-	core.open_element(layoutConfig)
-
-	-- 3. Configure specific element types (Rectangle, Border, etc)
-	-- Note: core.open_element only attaches layout config.
-	-- We need to attach other configs via the internal logic if exposed,
-	-- or if core.open_element creates a generic element, we need to populate properties.
-	-- *Correction*: In the ported Core, open_element takes LayoutConfig.
-	-- Additional configs (Color, Border, etc) are typically attached via Clay__AttachElementConfig.
-	-- However, the Core.lua API exposed `open_element` but didn't expose `attach_config`.
-	-- For this shell to function 1:1 with the C Macro behavior (`CLAY(...)`),
-	-- we assume `core.open_element` or a helper handles the declaration struct.
-	-- Since the `core.lua` provided previously was a direct port of logic but minimal API,
-	-- we will map common properties (color, id) here if possible, or assume the user
-	-- extends core to expose `Clay__AttachElementConfig`.
-
-	-- Assuming `core` has exposed `attach_config` or we access context directly (Lua-as-C style allows this).
-	-- Accessing context directly for config attachment:
-	local context = core.initialize(nil, nil) -- Gets singleton
-
-	-- Background Color (Shared Config)
-	if config.backgroundColor or config.cornerRadius or config.userData then
-		local shared = ffi.new("Clay_SharedElementConfig")
-		if config.backgroundColor then
-			shared.backgroundColor = parse_color(config.backgroundColor)
-		end
-		if config.cornerRadius then
-			if type(config.cornerRadius) == "number" then
-				shared.cornerRadius =
-					{ config.cornerRadius, config.cornerRadius, config.cornerRadius, config.cornerRadius }
-			else
-				shared.cornerRadius = config.cornerRadius
-			end
-		end
-		-- Attach using internal logic pattern (duplicated here or exposed from core)
-		-- Ideally `core` exports `attach_element_config`.
-		-- Since it wasn't in the previous file, we assume standard usage relies on
-		-- `core` being the "implementation" and `shell` needing deep access.
-		-- We will manually access the arrays via the context reference.
-
-		-- Helper to replicate `Clay__AttachElementConfig` logic in shell
-		local elemIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
-		local elem = context.layoutElements.internalArray + elemIdx
-
-		-- Add Config to Array
-		if context.elementConfigs.length < context.elementConfigs.capacity then
-			local cfgIdx = context.elementConfigs.length
-			context.elementConfigs.length = context.elementConfigs.length + 1
-			local cfg = context.elementConfigs.internalArray + cfgIdx
-
-			cfg.type = 8 -- SHARED
-			cfg.config.sharedElementConfig = shared
-
-			-- Link to Element (Simple Append for now)
-			if elem.elementConfigs.length == 0 then
-				elem.elementConfigs.internalArray = cfg
-			end
-			elem.elementConfigs.length = elem.elementConfigs.length + 1
-		end
+	declaration.layout = parse_layout_config(config.layout)
+	declaration.backgroundColor = parse_color(config.backgroundColor)
+	if config.cornerRadius then
+		declaration.cornerRadius = parse_corner_radius(config.cornerRadius)
+	end
+	if config.border then
+		declaration.border = parse_border_config(config.border)
+	end
+	if config.floating then
+		declaration.floating = parse_floating_config(config.floating)
 	end
 
-	-- 4. Children
+	if config.image then
+		declaration.image.imageData = config.image.imageData
+	end
+	if config.custom then
+		declaration.custom.customData = config.custom.customData
+	end
+	if config.userData then
+		declaration.userData = config.userData
+	end
+
+	core.open_element()
+	core.configure_open_element(declaration)
+
 	if children_fn then
 		children_fn()
 	end
 
-	-- 5. Close
 	core.close_element()
 end
 

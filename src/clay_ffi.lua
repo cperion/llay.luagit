@@ -1,6 +1,10 @@
 local ffi = require("ffi")
 
-ffi.cdef([[
+-- Define types only once (handle multiple requires)
+local clay_ffi_defined = package.loaded["clay_ffi_loaded"]
+if not clay_ffi_defined then
+    pcall(function()
+        ffi.cdef([[
     // =========================================================================
     // PRIMITIVES & FORWARD DECLARATIONS
     // =========================================================================
@@ -232,6 +236,19 @@ ffi.cdef([[
         Clay_CornerRadius cornerRadius;
         void* userData;
     } Clay_SharedElementConfig;
+
+    typedef struct Clay_ElementDeclaration {
+        Clay_LayoutConfig layout;
+        Clay_Color backgroundColor;
+        Clay_CornerRadius cornerRadius;
+        Clay_AspectRatioElementConfig aspectRatio;
+        Clay_ImageElementConfig image;
+        Clay_FloatingElementConfig floating;
+        Clay_CustomElementConfig custom;
+        Clay_ClipElementConfig clip;
+        Clay_BorderElementConfig border;
+        void *userData;
+    } Clay_ElementDeclaration;
 
     // =========================================================================
     // INTERNAL ELEMENT DATA STRUCTURES
@@ -556,5 +573,8 @@ ffi.cdef([[
         Clay__DebugElementDataArray debugElementData;
     } Clay_Context;
 ]])
+    end)
+    package.loaded["clay_ffi_loaded"] = true
+end
 
 return {}
