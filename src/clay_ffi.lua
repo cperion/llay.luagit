@@ -555,6 +555,11 @@ struct Clay_Context {
     Clay__charArray dynamicStringData;
     Clay__LayoutElementHashMapItemArray layoutElementsHashMapInternal;
     Clay__int32_tArray layoutElementsHashMap;
+    Clay__MeasureTextCacheItemArray measureTextHashMapInternal;
+    Clay__int32_tArray measureTextHashMapInternalFreeList;
+    Clay__int32_tArray measureTextHashMap;
+    Clay__MeasuredWordArray measuredWords;
+    Clay__int32_tArray measuredWordsFreeList;
 };
 
 Clay_Arena Clay_CreateArenaWithCapacityAndMemory(size_t capacity, void *memory);

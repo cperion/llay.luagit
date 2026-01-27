@@ -8,10 +8,11 @@
 **Recent Progress:**
 - `fix(tools): support CLAY_PACKED_ENUM macro-based type definitions` (e8042c9)
 - `feat(ffi): add missing type definitions for text and layout` (a4f7722)
+- `feat(core): implement hash map functions and initialize arrays` (9e6b1f5)
 
 **Summary:**
 - Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
-- Phase 2 (Core Infrastructure): ~60% complete (hashmap items pending)
+- Phase 2 (Core Infrastructure): ~85% complete (text measurement done, config handling pending)
 - Phase 3 (Layout Algorithms): Not started
 - Phase 4 (Rendering): Not started
 - Phase 5 (Shell API): ~60% complete (helpers pending)
@@ -60,23 +61,23 @@ Implementation of the memory management and basic data structures.
      - [x] `Clay__StringArray`
      - [x] `Clay__WrappedTextLineArray`
      - [x] `Clay__MeasureTextCacheItemArray`
- - [x] **HashMap Logic**
-     - [x] `Clay__HashString` (Port hash algorithm - DJB2 hash at core.lua:307-317)
-     - [ ] `Clay__AddHashMapItem` (Collision handling logic)
-     - [ ] `Clay__GetHashMapItem`
-- [ ] **Element Management**
-    - [x] `Clay__OpenElement`
-    - [x] `Clay__CloseElement`
-    - [ ] `Clay__ConfigureOpenElement` (Handling Config attachments)
-    - [ ] `Clay__GetOpenLayoutElement`
+  - [x] **HashMap Logic**
+      - [x] `Clay__HashString` (Port hash algorithm - DJB2 hash at core.lua:307-317)
+      - [x] `Clay__AddHashMapItem` (Collision handling logic with generations)
+      - [x] `Clay__GetHashMapItem` (Hash table lookup with collision resolution)
+ - [ ] **Element Management**
+     - [x] `Clay__OpenElement`
+     - [x] `Clay__CloseElement`
+     - [ ] `Clay__ConfigureOpenElement` (Handling Config attachments)
+     - [ ] `Clay__GetOpenLayoutElement`
 
 ## Phase 3: Layout Algorithms (`src/core.lua`)
 
 **Crucial:** Adhere to 0-based indexing loops. See docs/porting-guide.md.
 
-- [ ] **Text Measurement & Caching**
-    - [ ] `Clay__MeasureTextCached` (Hash map lookup)
-    - [ ] `Clay__MeasureText` (The actual sizing logic)
+- [x] **Text Measurement & Caching**
+     - [x] `Clay__MeasureTextCached` (Hash map lookup with generation-based cleanup)
+     - [ ] `Clay__MeasureText` (The actual sizing logic - uses external callback)
 - [ ] **Sizing Logic (`Clay__SizeContainersAlongAxis`)**
     This is the core layout engine. Break it down:
     - [ ] Pass 1: Size `FIXED` and `PERCENT` containers.

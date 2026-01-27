@@ -158,6 +158,96 @@ local function Clay__GetHashMapItem(id)
     return nil
 end
 
+local function Clay__HashStringContentsWithConfig(text, config)
+    local hash = 0
+    for i = 0, text.length - 1 do
+        local c = ffi.cast("const char*", text.chars)[i]
+        hash = ((hash * 33) + c) % 4294967296
+    end
+    hash = (hash + config.fontSize) % 4294967296
+    hash = (hash + bit.lshift(hash, 10)) % 4294967296
+    hash = bit.xor(hash, bit.rshift(hash, 6)) % 4294967296
+    return hash
+end
+
+local function Clay__MeasureTextCached(text, config)
+    if not measure_text_fn then
+        local default_dims = ffi.new("Clay_Dimensions", {width = text.length * 10, height = 16})
+        local result = ffi.new("Clay__MeasureTextCacheItem")
+        result.measuredWordsStartIndex = -1
+        result.unwrappedDimensions = default_dims
+        result.minWidth = default_dims.width
+        return result
+    end
+    
+    local id = Clay__HashStringContentsWithConfig(text, config)
+    local hashBucket = id % context.measureTextHashMap.capacity
+    local elementIndexPrevious = 0
+    local elementIndex = context.measureTextHashMap.internalArray[hashBucket]
+    
+    while elementIndex ~= 0 do
+        local hashEntry = context.measureTextHashMapInternal.internalArray + elementIndex
+        if hashEntry.id == id then
+            hashEntry.generation = context.generation
+            return hashEntry
+        end
+        
+        if context.generation - hashEntry.generation > 2 then
+            local nextWordIndex = hashEntry.measuredWordsStartIndex
+            while nextWordIndex ~= -1 do
+                local measuredWord = context.measuredWords.internalArray + nextWordIndex
+                Clay__int32_tArray_Add(context.measuredWordsFreeList, nextWordIndex)
+                nextWordIndex = measuredWord.next
+            end
+            
+            local nextIndex = hashEntry.nextIndex
+            if elementIndexPrevious == 0 then
+                context.measureTextHashMap.internalArray[hashBucket] = nextIndex
+            else
+                (context.measureTextHashMapInternal.internalArray + elementIndexPrevious).nextIndex = nextIndex
+            end
+            elementIndex = nextIndex
+        else
+            elementIndexPrevious = elementIndex
+            elementIndex = hashEntry.nextIndex
+        end
+    end
+    
+    local newItemIndex = 0
+    if context.measureTextHashMapInternalFreeList.length > 0 then
+        newItemIndex = context.measureTextHashMapInternalFreeList.internalArray[context.measureTextHashMapInternalFreeList.length - 1]
+        context.measureTextHashMapInternalFreeList.length = context.measureTextHashMapInternalFreeList.length - 1
+    else
+        if context.measureTextHashMapInternal.length >= context.measureTextHashMapInternal.capacity - 1 then
+            local result = ffi.new("Clay__MeasureTextCacheItem")
+            result.measuredWordsStartIndex = -1
+            result.unwrappedDimensions = ffi.new("Clay_Dimensions", {width = text.length * 10, height = 16})
+            result.minWidth = result.unwrappedDimensions.width
+            return result
+        end
+        newItemIndex = context.measureTextHashMapInternal.length
+        context.measureTextHashMapInternal.length = context.measureTextHashMapInternal.length + 1
+    end
+    
+    local measured = context.measureTextHashMapInternal.internalArray + newItemIndex
+    measured.id = id
+    measured.generation = context.generation
+    measured.measuredWordsStartIndex = -1
+    
+    local text_slice = ffi.new("Clay_StringSlice", {length = text.length, chars = text.chars, baseChars = text.chars})
+    local dims = measure_text_fn(text_slice, config, context.measureTextUserData)
+    measured.unwrappedDimensions = dims
+    measured.minWidth = dims.width
+    
+    if elementIndexPrevious == 0 then
+        context.measureTextHashMap.internalArray[hashBucket] = newItemIndex
+    else
+        (context.measureTextHashMapInternal.internalArray + elementIndexPrevious).nextIndex = newItemIndex
+    end
+    
+    return measured
+end
+
 local function allocate_config_from_table(config_table)
     local config = ffi.new("Clay_LayoutConfig")
                 
@@ -333,6 +423,30 @@ function M.initialize(capacity, dims)
     for i = 0, max_elements - 1 do
         context.layoutElementsHashMap.internalArray[i] = -1
     end
+    
+    local max_measure_words = 8192
+    
+    context.measureTextHashMapInternal.capacity = max_measure_words
+    context.measureTextHashMapInternal.length = 0
+    context.measureTextHashMapInternal.internalArray = ffi.cast("Clay__MeasureTextCacheItem*", Clay__Array_Allocate_Arena(max_measure_words, ffi.sizeof("Clay__MeasureTextCacheItem"), context.internalArena))
+    
+    context.measureTextHashMap.capacity = max_measure_words
+    context.measureTextHashMap.length = 0
+    context.measureTextHashMap.internalArray = ffi.cast("int32_t*", Clay__Array_Allocate_Arena(max_measure_words, ffi.sizeof("int32_t"), context.internalArena))
+    
+    context.measureTextHashMapInternalFreeList.capacity = max_measure_words
+    context.measureTextHashMapInternalFreeList.length = 0
+    context.measureTextHashMapInternalFreeList.internalArray = ffi.cast("int32_t*", Clay__Array_Allocate_Arena(max_measure_words, ffi.sizeof("int32_t"), context.internalArena))
+    
+    context.measuredWords.capacity = max_measure_words
+    context.measuredWords.length = 0
+    context.measuredWords.internalArray = ffi.cast("Clay__MeasuredWord*", Clay__Array_Allocate_Arena(max_measure_words, ffi.sizeof("Clay__MeasuredWord"), context.internalArena))
+    
+    context.measuredWordsFreeList.capacity = max_measure_words
+    context.measuredWordsFreeList.length = 0
+    context.measuredWordsFreeList.internalArray = ffi.cast("int32_t*", Clay__Array_Allocate_Arena(max_measure_words, ffi.sizeof("int32_t"), context.internalArena))
+    
+    context.measureTextHashMapInternal.length = 1
     
     return context
 end
