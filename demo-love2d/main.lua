@@ -41,9 +41,8 @@ local function love_measure_text(text, config)
 		font = fonts.small
 	end
 
-	local text_str = ffi.string(text.chars, text.length)
 	return {
-		width = font:getWidth(text_str),
+		width = font:getWidth(text),
 		height = font:getHeight(),
 	}
 end
@@ -138,7 +137,7 @@ local function render_ui()
 					padding = { 0, 20, 0, 0 }, -- Right padding for scrollbar space
 					childGap = 12,
 				},
-				clip = { vertical = true, horizontal = false, childOffset = llay.get_scroll_offset() },
+				clip = { vertical = true, horizontal = false },
 			}, function()
 				for i, task in ipairs(tasks) do
 					llay.Element({
@@ -180,18 +179,19 @@ local function render_ui()
 	end)
 
 	-- 3. Floating Element (Tooltip)
-	if llay.pointer_over("nav_1") then
-		llay.Element({
-			layout = { sizing = { width = 180, height = "FIT" }, padding = 10 },
-			backgroundColor = { 0, 0, 0, 220 },
-			cornerRadius = 6,
-			floating = {
-				attachTo = llay.FloatingAttachToElement.ROOT,
-				zIndex = 100,
-				offset = { x = love.mouse.getX() + 15, y = love.mouse.getY() + 15 },
-			},
-		}, function()
-			llay.Text("Click to view core engine architecture and JIT logs.", { color = COLORS.TEXT, fontSize = 12 })
+		if llay.pointer_over("nav_1") then
+			llay.Element({
+				layout = { sizing = { width = 180, height = "FIT" }, padding = 10 },
+				backgroundColor = { 0, 0, 0, 220 },
+				cornerRadius = 6,
+				floating = {
+					attachTo = llay.FloatingAttachToElement.ROOT,
+					zIndex = 100,
+					pointerCaptureMode = llay.PointerCapture.PASSTHROUGH,
+					offset = { x = love.mouse.getX() + 15, y = love.mouse.getY() + 15 },
+				},
+			}, function()
+				llay.Text("Click to view core engine architecture and JIT logs.", { color = COLORS.TEXT, fontSize = 12 })
 		end)
 	end
 
@@ -199,15 +199,15 @@ local function render_ui()
 end
 
 function love.update(dt)
-	-- Update interaction state
+	-- 1. Sync pointer position
 	llay.set_pointer_state(love.mouse.getX(), love.mouse.getY(), love.mouse.isDown(1))
 
-	-- Handle scrolling momentum and wheel delta
-	llay.update_scroll_containers(true, 0, scroll_dy, dt)
-	scroll_dy = 0 -- Reset delta after consuming
-
-	-- Regenerate layout
+	-- 2. Generate layout (this populates the hover states for the CURRENT frame)
 	render_ui()
+
+	-- 3. Update scroll momentum based on the layout we just generated
+	llay.update_scroll_containers(true, 0, scroll_dy, dt)
+	scroll_dy = 0 
 end
 
 function love.draw()
@@ -223,14 +223,14 @@ function love.draw()
 			local c = cmd.renderData.rectangle.backgroundColor
 			local r = cmd.renderData.rectangle.cornerRadius
 			love.graphics.setColor(c.r / 255, c.g / 255, c.b / 255, c.a / 255)
-			love.graphics.rectangle("fill", b.x, b.y, b.width, b.height, r.topLeft)
+			love.graphics.rectangle("fill", math.floor(b.x), math.floor(b.y), math.floor(b.width), math.floor(b.height), r.topLeft)
 		elseif cmd.commandType == llay._core.Clay_RenderCommandType.BORDER then
 			local c = cmd.renderData.border.color
 			local r = cmd.renderData.border.cornerRadius
 			local w = cmd.renderData.border.width
 			love.graphics.setColor(c.r / 255, c.g / 255, c.b / 255, c.a / 255)
 			love.graphics.setLineWidth(w.left)
-			love.graphics.rectangle("line", b.x, b.y, b.width, b.height, r.topLeft)
+			love.graphics.rectangle("line", math.floor(b.x), math.floor(b.y), math.floor(b.width), math.floor(b.height), r.topLeft)
 		elseif cmd.commandType == llay._core.Clay_RenderCommandType.TEXT then
 			local d = cmd.renderData.text
 			local c = d.textColor
@@ -280,4 +280,3 @@ function love.resize(w, h)
 	screen_w, screen_h = w, h
 	llay.set_dimensions(w, h)
 end
-

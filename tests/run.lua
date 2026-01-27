@@ -6,6 +6,17 @@ print("==========================")
 local passed = 0
 local failed = 0
 
+local function run_test(name, fn)
+	print("Test: " .. name)
+	local ok, err = pcall(fn)
+	if ok then
+		print("  PASS")
+		return true
+	end
+	print("  FAIL: " .. tostring(err))
+	return false
+end
+
 local function compare_with_golden(test_name, golden_file)
 	print("Test: " .. test_name)
 
@@ -91,6 +102,16 @@ local tests = {
 
 for _, test in ipairs(tests) do
 	if compare_with_golden(test.name, test.file) then
+		passed = passed + 1
+	else
+		failed = failed + 1
+	end
+end
+
+-- Regression tests (engine invariants not covered by the C golden diffs)
+local regressions = require("tests.test_regressions")
+for _, t in ipairs(regressions) do
+	if run_test(t.name, t.fn) then
 		passed = passed + 1
 	else
 		failed = failed + 1
