@@ -574,6 +574,10 @@ function M.initialize(capacity, dims)
     context.openLayoutElementStack.length = 0
     context.openLayoutElementStack.internalArray = Clay__Array_Allocate_Arena(max_stack, ffi.sizeof("int32_t"), context.internalArena)
     
+    context.layoutElementChildrenBuffer.capacity = max_elements
+    context.layoutElementChildrenBuffer.length = 0
+    context.layoutElementChildrenBuffer.internalArray = Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("int32_t"), context.internalArena)
+    
     context.layoutElementsHashMapInternal.capacity = max_elements
     context.layoutElementsHashMapInternal.length = 0
     context.layoutElementsHashMapInternal.internalArray = ffi.cast("Clay_LayoutElementHashMapItem*", Clay__Array_Allocate_Arena(max_elements, ffi.sizeof("Clay_LayoutElementHashMapItem"), context.internalArena))
@@ -647,6 +651,7 @@ function M.open_element(config)
     elem.minDimensions.width = 0
     elem.minDimensions.height = 0
     elem.elementConfigs.length = 0
+    elem.childrenOrTextContent.children.length = 0
     
     if config ~= nil then
         if type(config) == "table" then

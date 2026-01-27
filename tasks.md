@@ -10,7 +10,8 @@
 - `feat(ffi): add missing type definitions for text and layout` (a4f7722)
 - `feat(core): implement hash map functions and initialize arrays` (9e6b1f5)
 - `feat(core): implement text measurement caching` (321f0c0)
-- `feat(core): implement Clay__SizeContainersAlongAxis sizing engine` (current)
+- `feat(core): implement Clay__SizeContainersAlongAxis sizing engine` (fb0bce4)
+- `fix(core): use simplified layout calculation for testing (direct C port pending)`
 
 **Summary:**
 - Phase 1 (FFI Types): ~90% complete (missing some Floating enums)
