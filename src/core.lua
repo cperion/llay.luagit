@@ -809,6 +809,8 @@ local function Clay__ConfigureOpenElement(declaration)
 		root.parentId = floatingConfig.parentId
 		root.clipElementId = clipElementId
 		root.zIndex = floatingConfig.zIndex
+		
+		int32_array_add(context.openClipElementStack, openLayoutElement.id)
 
 		Clay__AttachElementConfig(
 			{ floatingElementConfig = Clay__StoreFloatingElementConfig(floatingConfig) },
@@ -1693,8 +1695,8 @@ local function Clay__CalculateFinalLayout()
 						local scrollOffset = { x = 0, y = 0 }
 						local clipConfig = Clay__FindElementConfigWithType(elem, Clay__ElementConfigType.CLIP)
 						if clipConfig ~= nil then
-							scrollOffset.x = clipConfig.clipElementConfig.scrollOffset.x
-							scrollOffset.y = clipConfig.clipElementConfig.scrollOffset.y
+							scrollOffset.x = clipConfig.clipElementConfig.childOffset.x
+							scrollOffset.y = clipConfig.clipElementConfig.childOffset.y
 						end
 
 						if layoutConfig.layoutDirection == Clay_LayoutDirection.LEFT_TO_RIGHT then
@@ -2253,8 +2255,34 @@ function M.close_element()
 end
 
 function M.set_measure_text(fn)
-	_ANCHORS.callbacks.measure = fn
 	measure_text_fn = fn
+end
+
+function M.get_scroll_offset()
+	if query_scroll_offset_fn then
+		return query_scroll_offset_fn()
+	end
+	
+	local openElement = Clay__GetOpenLayoutElement()
+	if not openElement then
+		return { x = 0, y = 0 }
+	end
+	
+	-- If the element has no id attached at this point, generate one
+	if openElement.id == 0 then
+		Clay__GenerateIdForAnonymousElement(openElement)
+	end
+	
+	-- Search through scrollContainerDatas for matching element
+	for i = 0, context.scrollContainerDatas.length - 1 do
+		local mapping = context.scrollContainerDatas.internalArray + i
+		-- Compare by elementId since layoutElement pointer may change between frames
+		if mapping.elementId == openElement.id then
+			return { x = mapping.scrollPosition.x, y = mapping.scrollPosition.y }
+		end
+	end
+	
+	return { x = 0, y = 0 }
 end
 
 function M.set_dimensions(w, h)

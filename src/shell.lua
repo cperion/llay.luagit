@@ -310,11 +310,26 @@ function M.Element(arg1, arg2, arg3)
 	-- Open element with or without ID
 	if id then
 		core.open_element_with_id(id)
-		core.configure_open_element(declaration)
 	else
 		core.open_element()
-		core.configure_open_element(declaration)
 	end
+	
+	-- Auto-fill childOffset if clip is enabled but not provided
+	-- This must happen AFTER open_element because get_scroll_offset() queries the open element
+	local needsChildOffset = config.clip and (config.clip.childOffset == nil or type(config.clip.childOffset) == "function")
+	if needsChildOffset then
+		local offset
+		if type(config.clip.childOffset) == "function" then
+			offset = config.clip.childOffset()
+		else
+			offset = core.get_scroll_offset()
+		end
+		-- Update the already-created clip config
+		declaration.clip.childOffset.x = offset.x or 0
+		declaration.clip.childOffset.y = offset.y or 0
+	end
+	
+	core.configure_open_element(declaration)
 
 	if children_fn then
 		children_fn()

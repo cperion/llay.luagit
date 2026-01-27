@@ -32,16 +32,16 @@ llay.Element({
     },
     backgroundColor = { 18, 18, 22, 255 },
 }, function()
-    llay.Element({
-        id = "TaskListContainer",
-        layout = {
-            sizing = { width = "GROW", height = "GROW" },
-            layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
-            padding = { 0, 20, 0, 0 },
-            childGap = 12,
-        },
-        clip = { vertical = true, horizontal = false, childOffset = llay.get_scroll_offset() },
-    }, function()
+llay.Element({
+    id = "TaskListContainer",
+    layout = {
+        sizing = { width = "GROW", height = "GROW" },
+        layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+        padding = { 0, 20, 0, 0 },
+        childGap = 12,
+    },
+    clip = { vertical = true, horizontal = false }, -- childOffset auto-filled
+}, function()
         print("  Inside clip container")
         llay.Text("Test text", { color = { 220, 225, 235, 255 }, fontSize = 16 })
     end)
