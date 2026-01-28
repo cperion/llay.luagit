@@ -1,5 +1,5 @@
 -- Modern Workspace Demo for Llay Layout Engine (Raylib version)
--- Showcasing: Scrolling, Text Wrapping, Floating Elements, and Zero-GC UI logic.
+-- Showcasing: Scrolling, Text Wrapping, Floating Elements, Custom Rendering, and Zero-GC UI logic.
 
 package.path = "../src/?.lua;" .. package.path
 
@@ -13,9 +13,12 @@ local COLORS = {
 	CARD = { r = 34, g = 36, b = 46, a = 255 },
 	ACCENT = { r = 110, g = 120, b = 240, a = 255 },
 	ACCENT_HOVER = { r = 130, g = 140, b = 255, a = 255 },
+	ACCENT_ACTIVE = { r = 90, g = 100, b = 220, a = 255 },
 	TEXT = { r = 220, g = 225, b = 235, a = 255 },
 	TEXT_DIM = { r = 140, g = 145, b = 160, a = 255 },
 	BORDER = { r = 50, g = 55, b = 70, a = 255 },
+	TOGGLE_ON = { r = 110, g = 200, b = 120, a = 255 },
+	TOGGLE_OFF = { r = 60, g = 65, b = 75, a = 255 },
 }
 
 -- Colors helper for Raylib
@@ -57,6 +60,43 @@ for i = 1, 20 do
 end
 
 local nav_ids = { "nav_1", "nav_2", "nav_3", "nav_4" }
+
+-- Toggle Widget using Custom rendering
+local toggles = {}
+local function toggle(id, checked)
+	toggles[id] = toggles[id] or false
+	if toggles[id] == nil then
+		toggles[id] = checked
+	end
+
+	local is_hovered = llay.pointer_over(id)
+	local is_active = llay.hovered() and llay.hovered().id == llay.ID(id).id and rl.IsMouseButtonDown(0)
+
+	local bg_color = checked and COLORS.TOGGLE_ON or COLORS.TOGGLE_OFF
+	if is_hovered and not checked then
+		bg_color = { r = 80, g = 85, b = 95, a = 255 }
+	end
+
+	llay.Custom({
+		id = id,
+		layout = { sizing = { width = 52, height = 28 } },
+		backgroundColor = bg_color,
+		cornerRadius = 14,
+	}, function(rect, painter)
+		local knob_x = checked and (rect.x + rect.width - 16) or (rect.x + 4)
+		local knob_y = rect.y + rect.height / 2
+		painter:circle({ x = knob_x, y = knob_y }, 10, { r = 255, g = 255, b = 255, a = 255 })
+		if is_hovered then
+			painter:circle({ x = knob_x, y = knob_y }, 12, { r = 255, g = 255, b = 255, a = 30 })
+		end
+	end)
+
+	if is_hovered and rl.IsMouseButtonReleased(0) then
+		toggles[id] = not checked
+	end
+
+	return toggles[id]
+end
 
 local function measure_text(text, config, userdata)
 	local char_width = config.fontSize and config.fontSize / 1.5 or 10
@@ -158,13 +198,8 @@ local function render_ui()
 						cornerRadius = 10,
 						border = { color = COLORS.BORDER, width = 1 },
 					}, function()
-						-- Checkbox
-						llay.Element(llay.ID_LOCAL("checkbox"), {
-							layout = { sizing = { width = 20, height = 20 } },
-							backgroundColor = task.done and COLORS.ACCENT or { r = 0, g = 0, b = 0, a = 0 },
-							cornerRadius = 4,
-							border = { color = COLORS.ACCENT, width = 2 },
-						})
+						-- Custom Toggle Widget
+						local task_done = toggle("toggle_" .. i, task.done)
 
 						-- Labels container
 						llay.Element(llay.ID_LOCAL("labels"), {
@@ -174,7 +209,7 @@ local function render_ui()
 								childGap = 2,
 							},
 						}, function()
-							llay.Text(task.title, { color = COLORS.TEXT, fontSize = 16, fontId = 1 })
+							llay.Text(task.title, { color = task_done and COLORS.TEXT_DIM or COLORS.TEXT, fontSize = 16, fontId = 1 })
 							llay.Text(task.desc, { color = COLORS.TEXT_DIM, fontSize = 13 })
 						end)
 					end)
@@ -283,15 +318,31 @@ while not rl.WindowShouldClose() do
 				table.insert(scissor_stack, { x = b.x, y = b.y, width = b.width, height = b.height })
 				rl.BeginScissorMode(math.floor(b.x), math.floor(b.y), math.ceil(b.width), math.ceil(b.height))
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_END then
-				-- Pop from stack
 				table.remove(scissor_stack)
-
-				-- Restore previous scissor or disable if stack empty
 				if #scissor_stack > 0 then
 					local prev = scissor_stack[#scissor_stack]
 					rl.BeginScissorMode(prev.x, prev.y, prev.width, prev.height)
 				else
 					rl.EndScissorMode()
+				end
+			elseif cmd.commandType == llay._core.Llay_RenderCommandType.CUSTOM then
+				local draw_fn = llay.get_render_callback(cmd.id)
+				if draw_fn then
+					local rect = { x = b.x, y = b.y, width = b.width, height = b.height }
+					local painter = {
+						rect = function(self, r, color, radius)
+							local c = color
+							temp_rect.x = iround(r.x)
+							temp_rect.y = iround(r.y)
+							temp_rect.width = iround(r.width)
+							temp_rect.height = iround(r.height)
+							rl.DrawRectangleRounded(temp_rect, (radius or 0) / math.max(r.width, r.height), 4, ColorFromTable(c))
+						end,
+						circle = function(self, center, radius, color)
+							rl.DrawCircleV(ffi.new("Vector2", { x = center.x, y = center.y }), radius, ColorFromTable(color))
+						end,
+					}
+					draw_fn(rect, painter)
 				end
 			end
 		end
