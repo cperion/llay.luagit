@@ -80,8 +80,6 @@ M.Text = shell.Text
 -- Custom element with render callback for framework rendering
 M.Custom = shell.Custom
 
-
-
 -- ==================================================================================
 -- Constants & Enums
 -- ==================================================================================
@@ -100,11 +98,11 @@ M.FloatingClipToElement = shell.FloatingClipToElement
 -- ==================================================================================
 
 function M.set_pointer_state(x, y, is_down)
-	core.set_pointer_state({x = x, y = y}, is_down)
+	core.set_pointer_state({ x = x, y = y }, is_down)
 end
 
-function M.update_scroll_containers(enable_drag, dx, dy, dt)
-	return core.update_scroll_containers(enable_drag, {x = dx, y = dy}, dt)
+function M.update_scroll_containers(enable_drag, dx, dy, dt, capture_owner_id)
+	return core.update_scroll_containers(enable_drag, { x = dx, y = dy }, dt, capture_owner_id)
 end
 
 function M.pointer_over(id_string)

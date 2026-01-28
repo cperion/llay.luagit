@@ -2440,6 +2440,9 @@ end
 function M.set_pointer_state(position, isPointerDown)
 	if context.booleanWarnings.maxElementsExceeded then return end
 
+	-- FIX 1: Ensure z-order is current before hit testing
+	M.sort_roots_by_z()
+
 	-- Ensure position matches C struct layout if passed as table
 	if type(position) == "table" and not ffi.istype("Clay_Vector2", position) then
 		context.pointerInfo.position.x = position.x
@@ -2450,7 +2453,16 @@ function M.set_pointer_state(position, isPointerDown)
 
 	context.pointerOverIds.length = 0
 	
+	-- FIX 1: Track which root owns capture so we can filter descendants
+	local capturedRootIndex = -1
+	
 	for rootIndex = context.layoutElementTreeRoots.length - 1, 0, -1 do
+		-- FIX 1: If we already found a CAPTURE element in a previous (front) root, 
+		-- don't process any more background roots
+		if capturedRootIndex ~= -1 then
+			break
+		end
+		
 		local root = context.layoutElementTreeRoots.internalArray[rootIndex]
 		local rootElement = context.layoutElements.internalArray + root.layoutElementIndex
 		
@@ -2500,6 +2512,7 @@ function M.set_pointer_state(position, isPointerDown)
 			if floatingUnion ~= nil then
 				local floatingCfg = floatingUnion.floatingElementConfig
 				if floatingCfg.pointerCaptureMode == Llay_PointerCaptureMode.CAPTURE then
+					capturedRootIndex = rootIndex
 					break
 				end
 			end
@@ -2526,7 +2539,8 @@ end
 -- SCROLL SYSTEM
 -- ==================================================================================
 
-function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
+function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime, capture_owner_id)
+	capture_owner_id = capture_owner_id or 0  -- 0 means no capture
 	local isPointerActive = enableDragScrolling and (context.pointerInfo.state <= 1) -- PRESSED_THIS_FRAME or PRESSED
 	local highestPriorityScrollData = nil
 	local changed = false
@@ -2534,6 +2548,12 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 	for i = 0, context.scrollContainerDatas.length - 1 do
 		local scrollData = context.scrollContainerDatas.internalArray + i
 		if not scrollData.openThisFrame then goto next_scroll end
+
+		-- FIX 2: If we have a capture owner, only process if this scroll container IS the owner
+		-- or is a child of the owner
+		if capture_owner_id ~= 0 and scrollData.elementId ~= capture_owner_id then
+			goto next_scroll
+		end
 
 		scrollData.openThisFrame = false
 		local hashMapItem = Llay__GetHashMapItem(scrollData.elementId)
