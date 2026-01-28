@@ -258,14 +258,14 @@ while not rl.WindowShouldClose() do
 			local cmd = commands.internalArray[i]
 			local b = cmd.boundingBox
 
-			if cmd.commandType == llay._core.Clay_RenderCommandType.RECTANGLE then
+			if cmd.commandType == llay._core.Llay_RenderCommandType.RECTANGLE then
 				local c = cmd.renderData.rectangle.backgroundColor
 				temp_rect.x = iround(b.x)
 				temp_rect.y = iround(b.y)
 				temp_rect.width = iround(b.width)
 				temp_rect.height = iround(b.height)
 				rl.DrawRectangleRec(temp_rect, ColorFromTable(c))
-			elseif cmd.commandType == llay._core.Clay_RenderCommandType.BORDER then
+			elseif cmd.commandType == llay._core.Llay_RenderCommandType.BORDER then
 				local c = cmd.renderData.border.color
 				local w = cmd.renderData.border.width
 				temp_rect.x = iround(b.x)
@@ -273,16 +273,16 @@ while not rl.WindowShouldClose() do
 				temp_rect.width = iround(b.width)
 				temp_rect.height = iround(b.height)
 				rl.DrawRectangleLinesEx(temp_rect, w.left or 1, ColorFromTable(c))
-			elseif cmd.commandType == llay._core.Clay_RenderCommandType.TEXT then
+			elseif cmd.commandType == llay._core.Llay_RenderCommandType.TEXT then
 				local d = cmd.renderData.text
 				local c = d.textColor
 				local text = ffi.string(d.stringContents.chars, d.stringContents.length)
 				local font_size = d.fontSize or 20
 				rl.DrawText(text, iround(b.x), iround(b.y), font_size, ColorFromTable(c))
-			elseif cmd.commandType == llay._core.Clay_RenderCommandType.SCISSOR_START then
+			elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_START then
 				table.insert(scissor_stack, { x = b.x, y = b.y, width = b.width, height = b.height })
 				rl.BeginScissorMode(math.floor(b.x), math.floor(b.y), math.ceil(b.width), math.ceil(b.height))
-			elseif cmd.commandType == llay._core.Clay_RenderCommandType.SCISSOR_END then
+			elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_END then
 				-- Pop from stack
 				table.remove(scissor_stack)
 

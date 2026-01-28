@@ -219,19 +219,19 @@ function love.draw()
 		local cmd = commands.internalArray[i]
 		local b = cmd.boundingBox
 
-		if cmd.commandType == llay._core.Clay_RenderCommandType.RECTANGLE then
+		if cmd.commandType == llay._core.Llay_RenderCommandType.RECTANGLE then
 			local c = cmd.renderData.rectangle.backgroundColor
 			local r = cmd.renderData.rectangle.cornerRadius
 			love.graphics.setColor(c.r / 255, c.g / 255, c.b / 255, c.a / 255)
 			love.graphics.rectangle("fill", math.floor(b.x), math.floor(b.y), math.floor(b.width), math.floor(b.height), r.topLeft)
-		elseif cmd.commandType == llay._core.Clay_RenderCommandType.BORDER then
+		elseif cmd.commandType == llay._core.Llay_RenderCommandType.BORDER then
 			local c = cmd.renderData.border.color
 			local r = cmd.renderData.border.cornerRadius
 			local w = cmd.renderData.border.width
 			love.graphics.setColor(c.r / 255, c.g / 255, c.b / 255, c.a / 255)
 			love.graphics.setLineWidth(w.left)
 			love.graphics.rectangle("line", math.floor(b.x), math.floor(b.y), math.floor(b.width), math.floor(b.height), r.topLeft)
-		elseif cmd.commandType == llay._core.Clay_RenderCommandType.TEXT then
+		elseif cmd.commandType == llay._core.Llay_RenderCommandType.TEXT then
 			local d = cmd.renderData.text
 			local c = d.textColor
 
@@ -249,9 +249,9 @@ function love.draw()
 				math.floor(b.x),
 				math.floor(b.y)
 			)
-		elseif cmd.commandType == llay._core.Clay_RenderCommandType.SCISSOR_START then
+		elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_START then
 			love.graphics.setScissor(b.x, b.y, b.width, b.height)
-		elseif cmd.commandType == llay._core.Clay_RenderCommandType.SCISSOR_END then
+		elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_END then
 			love.graphics.setScissor()
 		end
 	end
