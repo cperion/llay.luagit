@@ -30,8 +30,40 @@ function M.set_dimensions(width, height)
 	core.set_dimensions(width, height)
 end
 
-function M.set_measure_text_function(fn)
-	core.set_measure_text(fn)
+function M.set_culling_enabled(enabled)
+	core.set_culling_enabled(enabled)
+end
+
+function M.set_debug_mode_enabled(enabled)
+	core.set_debug_mode_enabled(enabled)
+end
+
+function M.set_max_element_count(count)
+	core.set_max_element_count(count)
+end
+
+function M.get_element_data(id_variant)
+	local id
+	if type(id_variant) == "string" then
+		id = core.Llay__GetElementId(id_variant).id
+	elseif type(id_variant) == "table" or type(id_variant) == "cdata" then
+		id = id_variant.id
+	else
+		id = id_variant
+	end
+	return core.get_element_data(id)
+end
+
+function M.hovered()
+	return core.hovered()
+end
+
+function M.set_measure_text_function(fn, userData)
+	core.set_measure_text(fn, userData)
+end
+
+function M.set_query_scroll_offset_function(fn, userData)
+	core.set_query_scroll_offset(fn, userData)
 end
 
 -- ==================================================================================
@@ -57,6 +89,7 @@ M.SizingType = shell.SizingType
 M.TextWrap = shell.TextWrap
 M.PointerCapture = shell.PointerCapture
 M.FloatingAttachToElement = shell.FloatingAttachToElement
+M.FloatingClipToElement = shell.FloatingClipToElement
 
 -- ==================================================================================
 -- Interaction API

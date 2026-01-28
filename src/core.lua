@@ -2332,8 +2332,14 @@ function M.close_element()
 	Llay__UpdateAspectRatioBox(elem)
 end
 
-function M.set_measure_text(fn)
+function M.set_measure_text(fn, userData)
 	measure_text_fn = fn
+	context.measureTextUserData = userData
+end
+
+function M.set_query_scroll_offset(fn, userData)
+	query_scroll_offset_fn = fn
+	context.queryScrollOffsetUserData = userData
 end
 
 function M.get_scroll_offset()
@@ -2671,5 +2677,57 @@ M.Llay_TextAlignment = Llay_TextAlignment
 M.Llay_PointerDataInteractionState = Llay_PointerDataInteractionState
 M.Llay_PointerCaptureMode = Llay_PointerCaptureMode
 M.Llay_FloatingAttachToElement = Llay_FloatingAttachToElement
+
+function M.set_max_element_count(count)
+	if context then
+		context.maxElementCount = count
+	end
+end
+
+function M.set_culling_enabled(enabled)
+	if context then
+		context.disableCulling = not enabled
+	end
+end
+
+function M.set_debug_mode_enabled(enabled)
+	if context then
+		context.debugModeEnabled = enabled
+	end
+end
+
+function M.get_element_data(id)
+	local item = Llay__GetHashMapItem(id)
+	if item == nil then
+		return { found = false, boundingBox = { x = 0, y = 0, width = 0, height = 0 } }
+	end
+	return {
+		found = true,
+		boundingBox = {
+			x = item.boundingBox.x,
+			y = item.boundingBox.y,
+			width = item.boundingBox.width,
+			height = item.boundingBox.height
+		}
+	}
+end
+
+function M.hovered()
+	if context.booleanWarnings.maxElementsExceeded then return false end
+
+	local openElement = Llay__GetOpenLayoutElement()
+	if not openElement then return false end
+
+	if openElement.id == 0 then
+		Clay__GenerateIdForAnonymousElement(openElement)
+	end
+
+	for i = 0, context.pointerOverIds.length - 1 do
+		if context.pointerOverIds.internalArray[i].id == openElement.id then
+			return true
+		end
+	end
+	return false
+end
 
 return M

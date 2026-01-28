@@ -15,6 +15,7 @@ M.SizingType = { FIT = 0, GROW = 1, PERCENT = 2, FIXED = 3 }
 M.TextWrap = { WORDS = 0, NEWLINES = 1, NONE = 2 }
 M.PointerCapture = { CAPTURE = 0, PASSTHROUGH = 1 }
 M.FloatingAttachToElement = { NONE = 0, PARENT = 1, ELEMENT_WITH_ID = 2, ROOT = 3 }
+M.FloatingClipToElement = { NONE = 0, ATTACHED_PARENT = 1 }
 
 -- ==================================================================================
 -- Config Converters (Lua Table -> C Struct)
@@ -120,12 +121,7 @@ local function parse_layout_config(tbl)
 		c.layoutDirection = tbl.layoutDirection
 	end
 
-	-- Note: aspectRatio is not actually part of Clay_LayoutConfig struct
-	-- It's a field of Clay_ElementDeclaration. We'll handle it separately
-	-- by returning it as a second value
-	local aspectRatio = tbl.aspectRatio or 0
-
-	return c, aspectRatio
+	return c
 end
 
 local function parse_text_config(tbl)
@@ -270,7 +266,7 @@ function M.Element(arg1, arg2, arg3)
 	local declaration = ffi.new("Clay_ElementDeclaration")
 	
 	if config then
-		local layout_config, aspect_ratio = parse_layout_config(config.layout)
+		local layout_config = parse_layout_config(config.layout)
 		declaration.layout = layout_config
 		declaration.backgroundColor = parse_color(config.backgroundColor)
 		if config.cornerRadius then
@@ -286,7 +282,8 @@ function M.Element(arg1, arg2, arg3)
 			declaration.clip = parse_clip_config(config.clip)
 		end
 
-		if aspect_ratio ~= 0 then
+		local aspect_ratio = config.aspectRatio or (config.layout and config.layout.aspectRatio)
+		if aspect_ratio and aspect_ratio ~= 0 then
 			declaration.aspectRatio.aspectRatio = aspect_ratio
 		end
 
