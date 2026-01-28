@@ -1,3 +1,15 @@
 [submodule "clay"]
 	path = clay
 	url = https://github.com/nicbarker/clay.git
+[submodule "demo-raylib/raylib-lua"]
+	path = demo-raylib/raylib-lua
+	url = https://github.com/TSnake41/raylib-lua.git
+[submodule "demo-sdl2/sdl2-ffi"]
+	path = demo-sdl2/sdl2-ffi
+	url = https://github.com/torch/sdl2-ffi.git
+[submodule "demo-sdl3/sdl3-ffi"]
+	path = demo-sdl3/sdl3-ffi
+	url = https://github.com/sonoro1234/LuaJIT-SDL3.git
+[submodule "demo-sdl3/SDL_ttf"]
+	path = demo-sdl3/SDL_ttf
+	url = https://github.com/libsdl-org/SDL_ttf.git

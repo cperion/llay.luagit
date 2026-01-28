@@ -1408,6 +1408,9 @@ local function Clay__CalculateFinalLayout()
 	-- 0. Sort roots by Z-index
 	M.sort_roots_by_z()
 
+	-- Track roots that need an extra scissor end (to balance root.clipElementId scissor starts)
+	local rootNeedsExtraScissorEnd = {}
+
 	-- 1. Size X
 	Clay__SizeContainersAlongAxis(true)
 
@@ -1662,6 +1665,7 @@ local function Clay__CalculateFinalLayout()
 				cmd.boundingBox = clipItem.boundingBox
 				cmd.commandType = Clay_RenderCommandType.SCISSOR_START
 				cmd.zIndex = root.zIndex
+				rootNeedsExtraScissorEnd[elem.id] = true
 			end
 		end
 	end
@@ -1769,6 +1773,13 @@ local function Clay__CalculateFinalLayout()
 				local cmd = array_add(context.renderCommands, nil)
 				cmd.commandType = Clay_RenderCommandType.SCISSOR_END
 				cmd.id = elem.id
+			end
+
+			if rootNeedsExtraScissorEnd[elem.id] then
+				local cmd = array_add(context.renderCommands, nil)
+				cmd.commandType = Clay_RenderCommandType.SCISSOR_END
+				cmd.id = elem.id
+				rootNeedsExtraScissorEnd[elem.id] = nil
 			end
 
 			dfsBuffer.length = dfsBuffer.length - 1
@@ -2149,11 +2160,11 @@ function M.end_layout()
 end
 
 local function Clay__GenerateIdForAnonymousElement(openLayoutElement)
-	local parent = context.layoutElements.internalArray
-		+ int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 2)
-	local offset = parent.childrenOrTextContent.children.length + parent.floatingChildrenCount + 
-		_openChildrenCounts[parent.id % context.maxElementCount]
-	_openChildrenCounts[parent.id % context.maxElementCount] = _openChildrenCounts[parent.id % context.maxElementCount] + 1
+	local parentIdx = int32_array_get(context.openLayoutElementStack, context.openLayoutElementStack.length - 2)
+	local parent = context.layoutElements.internalArray + parentIdx
+	local slot = parentIdx
+	local offset = parent.childrenOrTextContent.children.length + parent.floatingChildrenCount + _openChildrenCounts[slot]
+	_openChildrenCounts[slot] = _openChildrenCounts[slot] + 1
 	local elementId = Clay__HashNumber(offset, parent.id)
 
 	openLayoutElement.id = elementId.id
@@ -2440,27 +2451,38 @@ end
 function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 	local isPointerActive = enableDragScrolling and (context.pointerInfo.state <= 1) -- PRESSED_THIS_FRAME or PRESSED
 	local highestPriorityScrollData = nil
-	
+	local changed = false
+
 	for i = 0, context.scrollContainerDatas.length - 1 do
 		local scrollData = context.scrollContainerDatas.internalArray + i
 		if not scrollData.openThisFrame then goto next_scroll end
-		
+
 		scrollData.openThisFrame = false
 		local hashMapItem = Clay__GetHashMapItem(scrollData.elementId)
 		if not hashMapItem then goto next_scroll end
 
 		-- Momentum Logic
 		if not isPointerActive and scrollData.pointerScrollActive then
-			scrollData.scrollMomentum.x = (scrollData.scrollPosition.x - scrollData.scrollOrigin.x) / (scrollData.momentumTime * 25)
-			scrollData.scrollMomentum.y = (scrollData.scrollPosition.y - scrollData.scrollOrigin.y) / (scrollData.momentumTime * 25)
+			local denom = scrollData.momentumTime
+			if denom < 0.001 then denom = 0.001 end
+
+			scrollData.scrollMomentum.x = (scrollData.scrollPosition.x - scrollData.scrollOrigin.x) / (denom * 25)
+			scrollData.scrollMomentum.y = (scrollData.scrollPosition.y - scrollData.scrollOrigin.y) / (denom * 25)
 			scrollData.pointerScrollActive = false
 		end
 
 		-- Apply Friction
+		local prevX = scrollData.scrollPosition.x
+		local prevY = scrollData.scrollPosition.y
 		scrollData.scrollPosition.x = scrollData.scrollPosition.x + scrollData.scrollMomentum.x
 		scrollData.scrollMomentum.x = scrollData.scrollMomentum.x * 0.95
 		scrollData.scrollPosition.y = scrollData.scrollPosition.y + scrollData.scrollMomentum.y
 		scrollData.scrollMomentum.y = scrollData.scrollMomentum.y * 0.95
+
+		-- Mark changed if friction modified position
+		if scrollData.scrollPosition.x ~= prevX or scrollData.scrollPosition.y ~= prevY then
+			changed = true
+		end
 
 		-- Find if pointer is over this container
 		for j = 0, context.pointerOverIds.length - 1 do
@@ -2474,13 +2496,16 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 	if highestPriorityScrollData then
 		local scrollElement = highestPriorityScrollData.layoutElement
 		local clip = Clay__FindElementConfigWithType(scrollElement, Clay__ElementConfigType.CLIP).clipElementConfig
-		
+
+		local beforeX = highestPriorityScrollData.scrollPosition.x
+		local beforeY = highestPriorityScrollData.scrollPosition.y
+
 		-- Wheel Scroll
 		if clip.vertical then
-			highestPriorityScrollData.scrollPosition.y = highestPriorityScrollData.scrollPosition.y + scrollDelta.y * 10
+			highestPriorityScrollData.scrollPosition.y = highestPriorityScrollData.scrollPosition.y + scrollDelta.y
 		end
 		if clip.horizontal then
-			highestPriorityScrollData.scrollPosition.x = highestPriorityScrollData.scrollPosition.x + scrollDelta.x * 10
+			highestPriorityScrollData.scrollPosition.x = highestPriorityScrollData.scrollPosition.x + scrollDelta.x
 		end
 
 		-- Drag Scroll
@@ -2506,7 +2531,24 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 		local maxScrollY = -CLAY__MAX(highestPriorityScrollData.contentSize.height - scrollElement.dimensions.height, 0)
 		highestPriorityScrollData.scrollPosition.x = CLAY__MAX(CLAY__MIN(highestPriorityScrollData.scrollPosition.x, 0), maxScrollX)
 		highestPriorityScrollData.scrollPosition.y = CLAY__MAX(CLAY__MIN(highestPriorityScrollData.scrollPosition.y, 0), maxScrollY)
+
+		-- Mark changed if wheel/drag/clamp modified position
+		if highestPriorityScrollData.scrollPosition.x ~= beforeX or highestPriorityScrollData.scrollPosition.y ~= beforeY then
+			changed = true
+		end
+
+		-- NaN guard (NaN is not equal to itself in Lua)
+		if highestPriorityScrollData.scrollPosition.x ~= highestPriorityScrollData.scrollPosition.x then
+			highestPriorityScrollData.scrollPosition.x = 0
+			highestPriorityScrollData.scrollMomentum.x = 0
+		end
+		if highestPriorityScrollData.scrollPosition.y ~= highestPriorityScrollData.scrollPosition.y then
+			highestPriorityScrollData.scrollPosition.y = 0
+			highestPriorityScrollData.scrollMomentum.y = 0
+		end
 	end
+
+		return changed
 end
 
 -- ==================================================================================
@@ -2552,12 +2594,16 @@ function M.open_text_element(text, textConfig)
 	-- Set default layout config
 	elem.layoutConfig = context.layoutConfigs.internalArray
 	
-	-- Measure
+	-- IMPORTANT: copy text config into arena so pointer is never dangling
+	local storedCfg = Clay__StoreTextElementConfig(textConfig)
+	if not storedCfg then return end
+	
+	-- Measure (pass the stored config pointer)
 	local clayString = ffi.new("Clay_String", { length = #text, chars = ffi.cast("const char*", text), isStaticallyAllocated = true })
-	local measured = Clay__MeasureTextCached(clayString, textConfig)
+	local measured = Clay__MeasureTextCached(clayString, storedCfg)
 	
 	elem.dimensions.width = measured.unwrappedDimensions.width
-	elem.dimensions.height = textConfig.lineHeight > 0 and textConfig.lineHeight or measured.unwrappedDimensions.height
+	elem.dimensions.height = (storedCfg.lineHeight > 0) and storedCfg.lineHeight or measured.unwrappedDimensions.height
 	elem.minDimensions.width = measured.minWidth
 	elem.minDimensions.height = elem.dimensions.height
 	
@@ -2567,11 +2613,12 @@ function M.open_text_element(text, textConfig)
 	textData.elementIndex = elemIdx
 	elem.childrenOrTextContent.textElementData = textData
 	
-	-- Configs
-	elem.elementConfigs.internalArray = array_add(context.elementConfigs, {
-		type = Clay__ElementConfigType.TEXT,
-		config = { textElementConfig = textConfig }
-	})
+	-- Configs (store pointer to arena-owned config)
+	local cfg = array_add(context.elementConfigs, ffi.new("Clay_ElementConfig"))
+	cfg.type = Clay__ElementConfigType.TEXT
+	cfg.config.textElementConfig = storedCfg
+	
+	elem.elementConfigs.internalArray = cfg
 	elem.elementConfigs.length = 1
 	
 	-- Parent link
@@ -2587,12 +2634,11 @@ function M.pointer_over(id)
 end
 
 function M.get_parent_element_id()
-	if context.openLayoutElementStack.length < 2 then
+	if context.openLayoutElementStack.length < 1 then
 		return 0
 	end
-	-- The element currently being configured is at the top. 
-	-- Its parent is one level down in the stack.
-	local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 2]
+	-- parent of the next element you're about to open is the *current* open element
+	local parentIdx = context.openLayoutElementStack.internalArray[context.openLayoutElementStack.length - 1]
 	return context.layoutElements.internalArray[parentIdx].id
 end
 

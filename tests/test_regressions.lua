@@ -194,7 +194,7 @@ local function run_scroll_offset_persists_and_moves_children_regression()
 	llay.end_layout()
 
 	assert(observed ~= nil, "expected to read scroll offset while Scroll is open")
-	assert_close(observed.y, -10, 0.001, "scroll offset y after wheel")
+	assert_close(observed.y, -1, 0.001, "scroll offset y after wheel")
 end
 
 return {

@@ -67,7 +67,7 @@ function M.set_pointer_state(x, y, is_down)
 end
 
 function M.update_scroll_containers(enable_drag, dx, dy, dt)
-	core.update_scroll_containers(enable_drag, {x = dx, y = dy}, dt)
+	return core.update_scroll_containers(enable_drag, {x = dx, y = dy}, dt)
 end
 
 function M.pointer_over(id_string)
