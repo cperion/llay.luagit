@@ -110,6 +110,16 @@ local function Llay__Array_Allocate_Arena(capacity, item_size, arena)
 	return ffi.cast("void*", result)
 end
 
+-- NEW HELPER: Allocate strings in arena to prevent GC corruption
+local function Llay__AllocateStringInArena(str)
+	if not str then return nil, 0 end
+	local len = #str
+	local ptr = ffi.cast("char*", Llay__Array_Allocate_Arena(len + 1, 1, context.internalArena))
+	ffi.copy(ptr, str, len)
+	ptr[len] = 0
+	return ptr, len
+end
+
 -- ==================================================================================
 -- Inspector Module (Runtime Diagnostics)
 -- ==================================================================================
@@ -299,6 +309,13 @@ local function Llay__AddHashMapItem(elementId, layoutElement)
 	while hashItemIndex ~= -1 do
 		local hashItem = context.layoutElementsHashMapInternal.internalArray + hashItemIndex
 		if hashItem.elementId.id == elementId.id then
+			-- COLLISION CHECK: If we already touched this item in the current frame, it's a duplicate ID error.
+			if hashItem.generation == context.generation + 1 then
+				if DEBUG_MODE then
+					print("[LLAY WARNING] Duplicate ID collision in same frame: " .. elementId.id)
+				end
+			end
+
 			hashItem.generation = context.generation + 1
 			hashItem.layoutElement = layoutElement
 			hashItem.debugData.collision = false
@@ -2218,8 +2235,12 @@ function M.open_element_with_id(elementId)
 	if type(charsValue) == "table" then
 		charsValue = charsValue.chars or charsValue[1] or ""
 	end
-	strId.chars = charsValue
-	strId.isStaticallyAllocated = false
+
+	-- FIX: Copy ID string to arena to prevent GC corruption of debug strings
+	local charsPtr, _ = Llay__AllocateStringInArena(charsValue)
+	strId.chars = charsPtr
+	strId.isStaticallyAllocated = true
+
 	array_add(context.layoutElementIdStrings, strId)
 
 	return elem
@@ -2283,7 +2304,13 @@ function M.close_element()
 		for i = 0, childCount - 1 do
 			local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
 			elem.dimensions.width = elem.dimensions.width + child.dimensions.width
-			elem.dimensions.height = LLAY__MAX(elem.dimensions.height, child.dimensions.height + padH)
+			-- For cross-axis (height in LEFT_TO_RIGHT), GROW children haven't been sized yet
+			-- Use minDimensions (intrinsic size) instead so FIT parent can calculate proper height
+			local childHeight = child.dimensions.height
+			if child.layoutConfig.sizing.height.type == Llay__SizingType.GROW then
+				childHeight = child.minDimensions.height
+			end
+			elem.dimensions.height = LLAY__MAX(elem.dimensions.height, childHeight + padH)
 		end
 		elem.dimensions.width = elem.dimensions.width + (LLAY__MAX(childCount - 1, 0) * config.childGap)
 	else
@@ -2291,7 +2318,13 @@ function M.close_element()
 		for i = 0, childCount - 1 do
 			local child = context.layoutElements.internalArray + elem.childrenOrTextContent.children.elements[i]
 			elem.dimensions.height = elem.dimensions.height + child.dimensions.height
-			elem.dimensions.width = LLAY__MAX(elem.dimensions.width, child.dimensions.width + padW)
+			-- For cross-axis (width in TOP_TO_BOTTOM), GROW children haven't been sized yet
+			-- Use minDimensions (intrinsic size) instead so FIT parent can calculate proper width
+			local childWidth = child.dimensions.width
+			if child.layoutConfig.sizing.width.type == Llay__SizingType.GROW then
+				childWidth = child.minDimensions.width
+			end
+			elem.dimensions.width = LLAY__MAX(elem.dimensions.width, childWidth + padW)
 		end
 		elem.dimensions.height = elem.dimensions.height + (LLAY__MAX(childCount - 1, 0) * config.childGap)
 	end
@@ -2406,8 +2439,15 @@ end
 
 function M.set_pointer_state(position, isPointerDown)
 	if context.booleanWarnings.maxElementsExceeded then return end
-	
-	context.pointerInfo.position = position
+
+	-- Ensure position matches C struct layout if passed as table
+	if type(position) == "table" and not ffi.istype("Clay_Vector2", position) then
+		context.pointerInfo.position.x = position.x
+		context.pointerInfo.position.y = position.y
+	else
+		context.pointerInfo.position = position
+	end
+
 	context.pointerOverIds.length = 0
 	
 	for rootIndex = context.layoutElementTreeRoots.length - 1, 0, -1 do
@@ -2452,7 +2492,18 @@ function M.set_pointer_state(position, isPointerDown)
 			return false
 		end
 		
-		if hitTest(root.layoutElementIndex) then break end
+		local found = hitTest(root.layoutElementIndex)
+		
+		-- Check for pointer capture mode - if this root is a floating element with CAPTURE mode, stop here
+		if found then
+			local floatingUnion = Llay__FindElementConfigWithType(rootElement, Llay__ElementConfigType.FLOATING)
+			if floatingUnion ~= nil then
+				local floatingCfg = floatingUnion.floatingElementConfig
+				if floatingCfg.pointerCaptureMode == Llay_PointerCaptureMode.CAPTURE then
+					break
+				end
+			end
+		end
 	end
 
 	local state = context.pointerInfo.state
@@ -2625,8 +2676,12 @@ function M.open_text_element(text, textConfig)
 	local storedCfg = Llay__StoreTextElementConfig(textConfig)
 	if not storedCfg then return end
 	
-	-- Measure (pass the stored config pointer)
-	local clayString = ffi.new("Clay_String", { length = #text, chars = ffi.cast("const char*", text), isStaticallyAllocated = true })
+	-- FIX: Copy text content to arena
+	-- Lua strings passed to FFI are not anchored. We must copy them to the arena.
+	local charsPtr, len = Llay__AllocateStringInArena(text)
+	
+	-- Measure (pass the arena pointer)
+	local clayString = ffi.new("Clay_String", { length = len, chars = charsPtr, isStaticallyAllocated = true })
 	local measured = Llay__MeasureTextCached(clayString, storedCfg)
 	
 	elem.dimensions.width = measured.unwrappedDimensions.width
