@@ -2440,9 +2440,6 @@ end
 function M.set_pointer_state(position, isPointerDown)
 	if context.booleanWarnings.maxElementsExceeded then return end
 
-	-- FIX 1: Ensure z-order is current before hit testing
-	M.sort_roots_by_z()
-
 	-- Ensure position matches C struct layout if passed as table
 	if type(position) == "table" and not ffi.istype("Clay_Vector2", position) then
 		context.pointerInfo.position.x = position.x
@@ -2451,27 +2448,26 @@ function M.set_pointer_state(position, isPointerDown)
 		context.pointerInfo.position = position
 	end
 
+	-- CRITICAL: Sort roots first so we hit-test front-to-back
+	M.sort_roots_by_z()
+
 	context.pointerOverIds.length = 0
-	
-	-- FIX 1: Track which root owns capture so we can filter descendants
-	local capturedRootIndex = -1
-	
+	local found_capture = false
+
+	-- Iterate from high index to low (front to back)
 	for rootIndex = context.layoutElementTreeRoots.length - 1, 0, -1 do
-		-- FIX 1: If we already found a CAPTURE element in a previous (front) root, 
-		-- don't process any more background roots
-		if capturedRootIndex ~= -1 then
-			break
-		end
+		-- If we already hit a CAPTURE element, stop processing background roots
+		if found_capture then break end
 		
-		local root = context.layoutElementTreeRoots.internalArray[rootIndex]
+		local root = context.layoutElementTreeRoots.internalArray + rootIndex
 		local rootElement = context.layoutElements.internalArray + root.layoutElementIndex
-		
+
 		local function hitTest(elemIdx)
 			local elem = context.layoutElements.internalArray + elemIdx
 			local mapItem = Llay__GetHashMapItem(elem.id)
 			if not mapItem then return false end
 
-			-- Floating passthrough: ignore this subtree for hit testing.
+			-- Check for floating passthrough (ignore these for capture blocking)
 			local floatingUnion = Llay__FindElementConfigWithType(elem, Llay__ElementConfigType.FLOATING)
 			if floatingUnion ~= nil then
 				local floatingCfg = floatingUnion.floatingElementConfig
@@ -2491,8 +2487,6 @@ function M.set_pointer_state(position, isPointerDown)
 			end
 			
 			if hitChild then
-				-- Bubble up hover state so parent containers (scroll areas, buttons, etc.)
-				-- are considered hovered when the pointer is over their children.
 				element_id_array_add(context.pointerOverIds, mapItem.elementId)
 				return true
 			end
@@ -2504,16 +2498,16 @@ function M.set_pointer_state(position, isPointerDown)
 			return false
 		end
 		
-		local found = hitTest(root.layoutElementIndex)
+		local hit = hitTest(root.layoutElementIndex)
 		
-		-- Check for pointer capture mode - if this root is a floating element with CAPTURE mode, stop here
-		if found then
+		-- If this root has CAPTURE mode, block everything behind it
+		if hit then
 			local floatingUnion = Llay__FindElementConfigWithType(rootElement, Llay__ElementConfigType.FLOATING)
 			if floatingUnion ~= nil then
 				local floatingCfg = floatingUnion.floatingElementConfig
 				if floatingCfg.pointerCaptureMode == Llay_PointerCaptureMode.CAPTURE then
-					capturedRootIndex = rootIndex
-					break
+					found_capture = true
+					-- Continue to next iteration (which we break at top) to block background
 				end
 			end
 		end
