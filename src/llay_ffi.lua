@@ -464,6 +464,24 @@ if not clay_ffi_defined then
     } Clay__Warning;
 
     // =========================================================================
+    // PUBLIC API RETURN STRUCTS
+    // =========================================================================
+    // Return structs for public API functions
+
+    typedef struct Clay_ScrollContainerData {
+        Clay_Vector2 *scrollPosition;
+        Clay_Dimensions scrollContainerDimensions;
+        Clay_Dimensions contentDimensions;
+        Clay_ClipElementConfig config;
+        bool found;
+    } Clay_ScrollContainerData;
+
+    typedef struct Clay_ElementData {
+        Clay_BoundingBox boundingBox;
+        bool found;
+    } Clay_ElementData;
+
+    // =========================================================================
     // ARRAY TYPE DEFINITIONS
     // =========================================================================
     // Clay defines these via macros. In Lua FFI we must write them out.
