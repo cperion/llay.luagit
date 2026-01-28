@@ -312,7 +312,19 @@ local function Llay__AddHashMapItem(elementId, layoutElement)
 	context.layoutElementsHashMapInternal.length = context.layoutElementsHashMapInternal.length + 1
 	local item = context.layoutElementsHashMapInternal.internalArray + itemIndex
 
-	item.elementId = elementId
+	local elementIdStruct = ffi.new("Clay_ElementId")
+	elementIdStruct.id = elementId.id
+	elementIdStruct.offset = elementId.offset
+	elementIdStruct.baseId = elementId.baseId
+	elementIdStruct.stringId.length = elementId.stringId.length
+	local charsValue = elementId.stringId.chars
+	if type(charsValue) == "table" then
+		charsValue = charsValue.chars or charsValue[1] or ""
+	end
+	elementIdStruct.stringId.chars = charsValue
+	elementIdStruct.stringId.isStaticallyAllocated = false
+
+	item.elementId = elementIdStruct
 	item.layoutElement = layoutElement
 	item.nextIndex = -1
 	item.generation = context.generation + 1
@@ -2196,11 +2208,20 @@ end
 function M.open_element_with_id(elementId)
 	local elem = M.open_element()
 	local elemIdx = context.layoutElements.length - 1
-	
+
 	elem.id = elementId.id
 	Llay__AddHashMapItem(elementId, elem)
-	array_add(context.layoutElementIdStrings, elementId.stringId)
-	
+
+	local strId = ffi.new("Clay_String")
+	strId.length = elementId.stringId.length
+	local charsValue = elementId.stringId.chars
+	if type(charsValue) == "table" then
+		charsValue = charsValue.chars or charsValue[1] or ""
+	end
+	strId.chars = charsValue
+	strId.isStaticallyAllocated = false
+	array_add(context.layoutElementIdStrings, strId)
+
 	return elem
 end
 
