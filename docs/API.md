@@ -711,6 +711,100 @@ end
 
 ---
 
+## Z-Index and Floating Elements
+
+### Understanding Z-Order
+
+Llay uses **ascending z-sort** where elements with **lower z-index render on top**. This is the opposite of traditional CSS z-index.
+
+```lua
+-- Lower z-index = renders LAST = appears on top
+-- Higher z-index = renders FIRST = appears behind
+
+llay.Element({
+    floating = {
+        zIndex = 0,   -- This renders LAST (on top)
+        attachTo = llay.FloatingAttachToElement.ROOT
+    }
+})
+
+llay.Element({
+    floating = {
+        zIndex = 100, -- This renders FIRST (behind)
+        attachTo = llay.FloatingAttachToElement.ROOT
+    }
+})
+```
+
+### The Z-Sort Gotcha
+
+**⚠️ CRITICAL**: The relationship between sort order, rendering, and hit-testing is subtle:
+
+1. **Sort Order**: `sort_roots_by_z()` sorts **ascending** (lower z first)
+   - Array order: `[low_z, mid_z, high_z]`
+   
+2. **Rendering**: Processes array **left-to-right** (0 to length-1)
+   - Low z renders first → High z renders last → Low z appears on top ✓
+
+3. **Hit Testing**: `set_pointer_state()` iterates **backwards** (length-1 to 0)
+   - Finds high z elements first
+   - Adds to `pointerOverIds` in reverse order (high z first, low z last)
+   
+4. **Scroll Selection**: `update_scroll_containers()` iterates `pointerOverIds` **backwards**
+   - Finds low z (front window) elements first
+   - This ensures scroll events go to the topmost element
+
+### Why This Matters
+
+If you change the sort direction, you MUST also change the scroll container iteration direction:
+
+```lua
+-- CORRECT (current implementation):
+-- Sort: ascending (lower z first)
+-- Render: left-to-right (lower z renders first, appears on top)
+-- Hit test: right-to-left (adds high z first)
+-- Scroll: reverse iterate pointerOverIds (finds low z/foreground first)
+
+-- WRONG (if you change sort to descending):
+-- Sort: descending (higher z first)  
+-- Render: left-to-right (higher z renders first, appears on top)
+-- Hit test: right-to-left (adds low z first)
+-- Scroll: reverse iterate finds high z/background first ✗
+```
+
+### Pointer Capture Mode
+
+Floating elements can block interactions with elements behind them:
+
+```lua
+llay.Element({
+    floating = {
+        zIndex = 0,
+        attachTo = llay.FloatingAttachToElement.ROOT,
+        pointerCaptureMode = llay.PointerCapture.CAPTURE  -- Blocks clicks to background
+        -- pointerCaptureMode = llay.PointerCapture.PASSTHROUGH  -- Clicks pass through
+    }
+})
+```
+
+**CAPTURE mode** stops hit testing at this element - elements behind won't receive hover/click events. **PASSTHROUGH mode** allows hit testing to continue to elements below.
+
+### Window Manager Pattern
+
+For window systems, use lower z-index for front windows:
+
+```lua
+-- When bringing a window to front, give it a lower z-index
+function bring_to_front(window_id)
+    -- Front window gets zIndex = base - penalty (e.g., 50 - 1000 = -950)
+    -- Background windows keep base zIndex (e.g., 50, 100, 150)
+    -- Sorting ascending: [-950, 50, 100, 150]
+    -- Rendering order: -950 first → appears on top
+end
+```
+
+---
+
 ## License
 
 This is a LuaJIT port of the Clay layout engine. See original Clay license for details.
