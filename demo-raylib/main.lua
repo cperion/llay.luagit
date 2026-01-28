@@ -64,16 +64,14 @@ local nav_ids = { "nav_1", "nav_2", "nav_3", "nav_4" }
 -- Toggle Widget using Custom rendering
 local toggles = {}
 local function toggle(id, checked)
-	toggles[id] = toggles[id] or false
 	if toggles[id] == nil then
 		toggles[id] = checked
 	end
 
 	local is_hovered = llay.pointer_over(id)
-	local is_active = llay.hovered() and llay.hovered().id == llay.ID(id).id and rl.IsMouseButtonDown(0)
 
-	local bg_color = checked and COLORS.TOGGLE_ON or COLORS.TOGGLE_OFF
-	if is_hovered and not checked then
+	local bg_color = toggles[id] and COLORS.TOGGLE_ON or COLORS.TOGGLE_OFF
+	if is_hovered and not toggles[id] then
 		bg_color = { r = 80, g = 85, b = 95, a = 255 }
 	end
 
@@ -83,7 +81,7 @@ local function toggle(id, checked)
 		backgroundColor = bg_color,
 		cornerRadius = 14,
 	}, function(rect, painter)
-		local knob_x = checked and (rect.x + rect.width - 16) or (rect.x + 4)
+		local knob_x = toggles[id] and (rect.x + rect.width - 16) or (rect.x + 4)
 		local knob_y = rect.y + rect.height / 2
 		painter:circle({ x = knob_x, y = knob_y }, 10, { r = 255, g = 255, b = 255, a = 255 })
 		if is_hovered then
@@ -92,7 +90,7 @@ local function toggle(id, checked)
 	end)
 
 	if is_hovered and rl.IsMouseButtonReleased(0) then
-		toggles[id] = not checked
+		toggles[id] = not toggles[id]
 	end
 
 	return toggles[id]
