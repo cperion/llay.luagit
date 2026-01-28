@@ -1,6 +1,6 @@
 local ffi = require("ffi")
 local core = require("core")
-require("clay_ffi")
+require("llay_ffi")
 
 local M = {}
 
@@ -220,24 +220,24 @@ end
 
 -- Standard ID
 function M.ID(str)
-	return core.Clay__GetElementId(str)
+	return core.Llay__GetElementId(str)
 end
 
 -- ID with Index (for loops)
 function M.IDI(str, index)
-	return core.Clay__HashStringWithOffset(str, index, 0)
+	return core.Llay__HashStringWithOffset(str, index, 0)
 end
 
 -- Local ID (scoped to parent)
 function M.ID_LOCAL(str)
 	local parentId = core.get_parent_element_id()
-	return core.Clay__HashStringWithOffset(str, 0, parentId)
+	return core.Llay__HashStringWithOffset(str, 0, parentId)
 end
 
 -- Local ID with Index
 function M.IDI_LOCAL(str, index)
 	local parentId = core.get_parent_element_id()
-	return core.Clay__HashStringWithOffset(str, index, parentId)
+	return core.Llay__HashStringWithOffset(str, index, parentId)
 end
 
 -- ==================================================================================

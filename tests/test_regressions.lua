@@ -13,7 +13,7 @@ end
 local function find_text_cmd(commands, text)
 	for i = 0, tonumber(commands.length) - 1 do
 		local cmd = commands.internalArray[i]
-		if cmd.commandType == llay._core.Clay_RenderCommandType.TEXT then
+		if cmd.commandType == llay._core.Llay_RenderCommandType.TEXT then
 			local d = cmd.renderData.text
 			local s = ffi.string(d.stringContents.chars, d.stringContents.length)
 			if s == text then

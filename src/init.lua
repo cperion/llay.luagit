@@ -71,13 +71,13 @@ function M.update_scroll_containers(enable_drag, dx, dy, dt)
 end
 
 function M.pointer_over(id_string)
-	local id = core.Clay__GetElementId(id_string)
+	local id = core.Llay__GetElementId(id_string)
 	return core.pointer_over(id.id)
 end
 
 -- Hashing helper for IDs
 function M.ID(str)
-	return core.Clay__GetElementId(str)
+	return core.Llay__GetElementId(str)
 end
 
 function M.IDI(str, index)
