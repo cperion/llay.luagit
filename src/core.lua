@@ -2563,9 +2563,11 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 		end
 
 		-- Find if pointer is over this container
+		-- Take the FIRST match (topmost) since pointerOverIds is filled back-to-front
 		for j = 0, context.pointerOverIds.length - 1 do
 			if scrollData.elementId == context.pointerOverIds.internalArray[j].id then
 				highestPriorityScrollData = scrollData
+				break -- Take only the first (topmost) match
 			end
 		end
 		::next_scroll::
@@ -2637,13 +2639,15 @@ function M.sort_roots_by_z()
 	local count = context.layoutElementTreeRoots.length
 	if count <= 1 then return end
 	-- Stable Bubble Sort for small number of roots (common in UI)
+	-- Sort DESCENDING (higher z first) so that lower z-index (on top) renders last
 	local sorted = false
 	while not sorted do
 		sorted = true
 		for i = 0, count - 2 do
 			local current = context.layoutElementTreeRoots.internalArray[i]
 			local next = context.layoutElementTreeRoots.internalArray[i+1]
-			if next.zIndex < current.zIndex then
+			-- Use > for descending sort (higher z first)
+			if next.zIndex > current.zIndex then
 				local tmp = ffi.new("Clay__LayoutElementTreeRoot", current)
 				context.layoutElementTreeRoots.internalArray[i] = next
 				context.layoutElementTreeRoots.internalArray[i+1] = tmp
