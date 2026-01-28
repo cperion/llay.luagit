@@ -5,6 +5,20 @@ require("llay_ffi")
 local M = {}
 
 -- ==================================================================================
+-- Render Callback Registry (for Custom drawing)
+-- ==================================================================================
+
+local _render_callbacks = {}
+
+function M._reset_render_callbacks()
+    for k in pairs(_render_callbacks) do _render_callbacks[k] = nil end
+end
+
+function M.get_render_callback(id)
+    return _render_callbacks[id]
+end
+
+-- ==================================================================================
 -- Enums & Constants
 -- ==================================================================================
 -- Re-exposing core enums for the API
@@ -339,6 +353,28 @@ function M.Text(text, config)
 	local textCfg = parse_text_config(config or {})
 	-- Use the new core function
 	core.open_text_element(text, textCfg)
+end
+
+function M.Custom(config, render_fn)
+	local id_str = config.id or ("auto_cust_" .. tostring(#_render_callbacks))
+	local id_obj = core.Llay__GetElementId(id_str)
+
+	_render_callbacks[id_obj.id] = render_fn
+
+	local declaration = ffi.new("Clay_ElementDeclaration")
+	declaration.layout = parse_layout_config(config.layout or config)
+	if config.backgroundColor then
+		declaration.backgroundColor = parse_color(config.backgroundColor)
+	end
+	if config.cornerRadius then
+		declaration.cornerRadius = parse_corner_radius(config.cornerRadius)
+	end
+
+	declaration.custom.customData = nil
+
+	core.open_element_with_id(id_obj)
+	core.configure_open_element(declaration)
+	core.close_element()
 end
 
 return M

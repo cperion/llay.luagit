@@ -19,6 +19,7 @@ end
 M.initialize = M.init
 
 function M.begin_layout()
+	shell._reset_render_callbacks()
 	core.begin_layout()
 end
 
@@ -123,6 +124,10 @@ end
 
 function M.IDI_LOCAL(str, index)
 	return shell.IDI_LOCAL(str, index)
+end
+
+function M.get_render_callback(id)
+	return shell.get_render_callback(id)
 end
 
 function M.sort_z_order()
