@@ -113,7 +113,7 @@ luajit tests/clay_ref/build.lua
 llay/
 ├── clay/              # Clay layout engine (git submodule - reference C impl)
 ├── src/
-│   ├── clay_ffi.lua   # FFI cdef declarations only - copy C structs exactly
+│   ├── llay_ffi.lua   # FFI cdef declarations only - copy C structs exactly
 │   ├── core.lua       # Core layer (C-like, replaces CLAY_IMPLEMENTATION)
 │   ├── shell.lua      # Public shell (declarative DSL API)
 │   └── init.lua       # Main entry point
@@ -169,7 +169,7 @@ typedef enum { CLAY_LEFT_TO_RIGHT, CLAY_TOP_TO_BOTTOM } Clay_LayoutDirection;
 
 ```lua
 -- Lua (core.lua)
-local Clay_LayoutDirection = {
+local Llay_LayoutDirection = {
     LEFT_TO_RIGHT = 0,
     TOP_TO_BOTTOM = 1
 }

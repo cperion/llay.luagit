@@ -236,7 +236,7 @@ typedef struct {
 
 **Enums**: Convert to constant tables
 ```lua
-local Clay_LayoutDirection = {
+local Llay_LayoutDirection = {
     LEFT_TO_RIGHT = 0,
     TOP_TO_BOTTOM = 1
 }

@@ -80,7 +80,7 @@ typedef enum { CLAY_LEFT_TO_RIGHT, CLAY_TOP_TO_BOTTOM } Clay_LayoutDirection;
 
 ```lua
 -- Lua
-local Clay_LayoutDirection = {
+local Llay_LayoutDirection = {
     LEFT_TO_RIGHT = 0,
     TOP_TO_BOTTOM = 1
 }
@@ -106,7 +106,7 @@ Clay uses an internal Arena. We must replicate this manual memory management.
 `clay.h` uses static variables (e.g., `Clay__currentContext`). In Lua, these become **Module Locals** in `core.lua`.
 
 ```lua
-local context = ffi.new("Clay_Context") -- The persistent instance
+local context = ffi.new("Llay_Context") -- The persistent instance
 local internal_arena = ffi.new("uint8_t[?]", MAX_MEMORY) -- The heap
 ```
 
@@ -191,19 +191,19 @@ Clay handles strings as `{ length, chars* }` (slices).
 
 `clay.h` has optional SIMD for hashing.
 
-**Guideline:** Drop SIMD for the initial port. LuaJIT's compiler generates very good assembly for simple loops. Port the scalar fallback version of `Clay__HashString`.
+**Guideline:** Drop SIMD for the initial port. LuaJIT's compiler generates very good assembly for simple loops. Port the scalar fallback version of `Llay__HashString`.
 
 ## Workflow Checklist (Execution Order)
 
 1. **Dependency-Free Types:** Port `Vector2`, `Color`, `Dimensions`, `BoundingBox` to `ffi.lua`
 2. **Config Types:** Port `LayoutConfig`, `ElementConfig` structs to `ffi.lua`
-3. **Context Definition:** Port `Clay_Context` to `ffi.lua`
-4. **Arena Logic:** Implement `Clay__Array_Allocate_Arena` in `core.lua`
-5. **Math/Hash:** Port `Clay__HashString` and math helpers
+3. **Context Definition:** Port `Llay_Context` to `ffi.lua`
+4. **Arena Logic:** Implement `Llay__Array_Allocate_Arena` in `core.lua`
+5. **Math/Hash:** Port `Llay__HashString` and math helpers
 6. **Measure Text:** Port `Clay_SetMeasureTextFunction` logic
    - **Note:** This requires a callback. Use `ffi.cast` to store the Lua callback, or simple Lua function variable storage since we are in Lua land
-7. **Layout Engine:** Port `Clay__CalculateFinalLayout` and `Clay__SizeContainersAlongAxis` (This is the hardest part)
-8. **Render Command Generation:** Port `Clay__CreateRenderCommands`
+7. **Layout Engine:** Port `Llay__CalculateFinalLayout` and `Llay__SizeContainersAlongAxis` (This is the hardest part)
+8. **Render Command Generation:** Port `Llay__CreateRenderCommands`
 9. **Public API:** Wrap `OpenElement`, `CloseElement`, `BeginLayout`, `EndLayout`
 
 ## Verification Strategy (The "Diff" Test)
@@ -215,16 +215,16 @@ To ensure correctness without debugging logical needles in a haystack:
 3. Dump the Lua render commands to a text file
 4. **Diff** the two text files. They should be identical down to the float epsilon
 
-## Example Translation: `Clay__SizeContainersAlongAxis`
+## Example Translation: `Llay__SizeContainersAlongAxis`
 
 ### C Original
 
 ```c
-void Clay__SizeContainersAlongAxis(bool xAxis) {
-    Clay_Context* context = Clay_GetCurrentContext();
+void Llay__SizeContainersAlongAxis(bool xAxis) {
+    Llay_Context* context = Llay_GetCurrentContext();
     // ...
     for (int i = 0; i < bfsBuffer.length; ++i) {
-        int32_t parentIndex = Clay__int32_tArray_GetValue(&bfsBuffer, i);
+        int32_t parentIndex = Llay__int32_tArray_GetValue(&bfsBuffer, i);
         Clay_LayoutElement *parent = Clay_LayoutElementArray_Get(&context->layoutElements, parentIndex);
         // ...
     }
@@ -234,11 +234,11 @@ void Clay__SizeContainersAlongAxis(bool xAxis) {
 ### Lua Port
 
 ```lua
-local function Clay__SizeContainersAlongAxis(xAxis) -- boolean
-    local context = Clay_GetCurrentContext()
+local function Llay__SizeContainersAlongAxis(xAxis) -- boolean
+    local context = Llay_GetCurrentContext()
     -- ...
     for i = 0, bfsBuffer.length - 1 do -- 0-based loop
-        local parentIndex = Clay__int32_tArray_GetValue(bfsBuffer, i)
+        local parentIndex = Llay__int32_tArray_GetValue(bfsBuffer, i)
         local parent = context.layoutElements + parentIndex
         -- ...
     end
