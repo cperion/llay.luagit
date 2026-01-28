@@ -370,7 +370,7 @@ function M.Custom(config, render_fn)
 		declaration.cornerRadius = parse_corner_radius(config.cornerRadius)
 	end
 
-	declaration.custom.customData = nil
+	declaration.custom.customData = ffi.cast("void*", 1)
 
 	core.open_element_with_id(id_obj)
 	core.configure_open_element(declaration)

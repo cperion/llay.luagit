@@ -77,6 +77,9 @@ M.Element = shell.Element
 -- Maps to CLAY_TEXT(...) macro
 M.Text = shell.Text
 
+-- Custom element with render callback for framework rendering
+M.Custom = shell.Custom
+
 
 
 -- ==================================================================================

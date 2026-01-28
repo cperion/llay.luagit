@@ -197,6 +197,113 @@ local function run_scroll_offset_persists_and_moves_children_regression()
 	assert_close(observed.y, -1, 0.001, "scroll offset y after wheel")
 end
 
+local function run_custom_element_render_callback_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(800, 600)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	-- Track if callback was called
+	local callback_called = false
+	local received_rect = nil
+	local received_painter = nil
+
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			padding = 0,
+		},
+	}, function()
+		llay.Custom({
+			id = "MyCustom",
+			layout = { sizing = { width = 100, height = 50 } },
+			backgroundColor = { 100, 150, 200, 255 },
+			cornerRadius = 8,
+		}, function(rect, painter)
+			callback_called = true
+			received_rect = rect
+			received_painter = painter
+		end)
+	end)
+	local commands = llay.end_layout()
+
+	assert(callback_called == false, "callback should NOT be called during layout")
+
+	-- Find the CUSTOM render command
+	local customCmd = nil
+	for i = 0, tonumber(commands.length) - 1 do
+		local cmd = commands.internalArray[i]
+		if cmd.commandType == llay._core.Llay_RenderCommandType.CUSTOM then
+			customCmd = cmd
+			break
+		end
+	end
+	assert(customCmd ~= nil, "expected to find CUSTOM render command")
+
+	-- Verify callback is retrievable
+	local retrieved_callback = llay.get_render_callback(customCmd.id)
+	assert(retrieved_callback ~= nil, "expected callback to be retrievable via id")
+
+	-- Verify the callback is the one we passed
+	assert(type(retrieved_callback) == "function", "retrieved callback should be a function")
+
+	-- Verify layout dimensions
+	assert_close(customCmd.boundingBox.x, 0, 0.001, "custom bbox x")
+	assert_close(customCmd.boundingBox.y, 0, 0.001, "custom bbox y")
+	assert_close(customCmd.boundingBox.width, 100, 0.001, "custom bbox width")
+	assert_close(customCmd.boundingBox.height, 50, 0.001, "custom bbox height")
+
+	-- Verify callbacks are cleared on next frame
+	llay.begin_layout()
+	llay.end_layout()
+	local cleared_callback = llay.get_render_callback(customCmd.id)
+	assert(cleared_callback == nil, "callback should be cleared after next begin_layout")
+end
+
+local function run_custom_element_multiple_ids_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(800, 600)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	local callbacks = {}
+
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			padding = 0,
+		},
+	}, function()
+		for i = 1, 3 do
+			llay.Custom({
+				id = "Custom_" .. i,
+				layout = { sizing = { width = 30, height = 30 } },
+			}, function() end)
+			callbacks[i] = llay.get_render_callback(llay.ID("Custom_" .. i).id)
+		end
+	end)
+	local commands = llay.end_layout()
+
+	-- All callbacks should be retrievable
+	for i = 1, 3 do
+		assert(callbacks[i] ~= nil, "expected callback " .. i .. " to be retrievable")
+	end
+
+	-- Verify all CUSTOM commands are generated
+	local customCount = 0
+	for i = 0, tonumber(commands.length) - 1 do
+		local cmd = commands.internalArray[i]
+		if cmd.commandType == llay._core.Llay_RenderCommandType.CUSTOM then
+			customCount = customCount + 1
+		end
+	end
+	assert(customCount == 3, "expected 3 CUSTOM commands, got " .. customCount)
+end
+
 return {
 	{
 		name = "regression_text_element_bbox_matches_measured",
@@ -213,5 +320,13 @@ return {
 	{
 		name = "regression_scroll_offset_persists_and_moves_children",
 		fn = run_scroll_offset_persists_and_moves_children_regression,
+	},
+	{
+		name = "regression_custom_element_render_callback",
+		fn = run_custom_element_render_callback_regression,
+	},
+	{
+		name = "regression_custom_element_multiple_ids",
+		fn = run_custom_element_multiple_ids_regression,
 	},
 }
