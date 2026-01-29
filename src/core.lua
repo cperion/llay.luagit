@@ -2494,8 +2494,11 @@ function M.set_pointer_state(position, isPointerDown)
 				end
 			end
 			
+			-- TEXT elements are transparent to mouse - don't add to pointerOverIds
+			local isTextElement = Llay__ElementHasConfig(elem, Llay__ElementConfigType.TEXT)
+			
 			local hitChild = false
-			if not Llay__ElementHasConfig(elem, Llay__ElementConfigType.TEXT) then
+			if not isTextElement then
 				for i = elem.childrenOrTextContent.children.length - 1, 0, -1 do
 					if hitTest(elem.childrenOrTextContent.children.elements[i]) then
 						hitChild = true
@@ -2507,6 +2510,11 @@ function M.set_pointer_state(position, isPointerDown)
 			if hitChild then
 				element_id_array_add(context.pointerOverIds, mapItem.elementId)
 				return true
+			end
+			
+			-- Text elements pass through hits to parent (don't capture)
+			if isTextElement then
+				return M.point_is_inside_rect(position, mapItem.boundingBox)
 			end
 			
 			if M.point_is_inside_rect(position, mapItem.boundingBox) then
@@ -2908,6 +2916,15 @@ function M.hovered()
 		end
 	end
 	return false
+end
+
+-- Return all element IDs under the pointer (for parent-child hit testing)
+function M.get_all_hovered_ids()
+	local result = {}
+	for i = 0, context.pointerOverIds.length - 1 do
+		result[i + 1] = context.pointerOverIds.internalArray[i].id
+	end
+	return result
 end
 
 -- Export internal functions for advanced usage

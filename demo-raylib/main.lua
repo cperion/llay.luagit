@@ -1,12 +1,16 @@
 -- Modern Workspace Demo for Llay Layout Engine (Raylib version)
--- Showcasing: Scrolling, Text Wrapping, Floating Elements, Custom Rendering, and Zero-GC UI logic.
+-- Demonstrates: Scrolling, Text Wrapping, Floating Elements, Custom Rendering,
+-- Capture API for interactions, and Zero-GC UI logic.
 
 package.path = "../src/?.lua;" .. package.path
 
 local ffi = require("ffi")
 local llay = require("init")
 
+-- ==================================================================================
 -- Theme Configuration
+-- ==================================================================================
+
 local COLORS = {
 	BG_DARK = { r = 18, g = 18, b = 22, a = 255 },
 	SIDEBAR = { r = 26, g = 27, b = 35, a = 255 },
@@ -21,15 +25,16 @@ local COLORS = {
 	TOGGLE_OFF = { r = 60, g = 65, b = 75, a = 255 },
 }
 
--- Colors helper for Raylib
+-- ==================================================================================
+-- Raylib Helpers
+-- ==================================================================================
+
 local function Color(r, g, b, a)
 	return ffi.new("Color", r, g, b, a or 255)
 end
 
--- Pre-allocated structs to avoid GC pressure in render loop
 local temp_rect = ffi.new("Rectangle", { x = 0, y = 0, width = 0, height = 0 })
 local temp_color = ffi.new("Color", { r = 0, g = 0, b = 0, a = 0 })
--- Stack to track nested scissor rectangles
 local scissor_stack = {}
 
 local function ColorFromTable(c)
@@ -40,14 +45,18 @@ local function ColorFromTable(c)
 	return temp_color
 end
 
+local function iround(x)
+	return math.floor(x + 0.5)
+end
+
+-- ==================================================================================
+-- State
+-- ==================================================================================
+
 local commands = nil
 local screen_w, screen_h = 1024, 768
 local scroll_dy = 0
 local last_gc_time = 0
-
-local function iround(x)
-	return math.floor(x + 0.5)
-end
 
 -- Mock Data
 local tasks = {}
@@ -63,40 +72,12 @@ end
 
 local nav_ids = { "nav_1", "nav_2", "nav_3", "nav_4" }
 
--- Toggle Widget using Custom rendering
+-- Toggle Widget State
 local toggles = {}
-local function toggle(id, checked)
-	if toggles[id] == nil then
-		toggles[id] = checked
-	end
 
-	local is_hovered = llay.pointer_over(id)
-
-	local bg_color = toggles[id] and COLORS.TOGGLE_ON or COLORS.TOGGLE_OFF
-	if is_hovered and not toggles[id] then
-		bg_color = { r = 80, g = 85, b = 95, a = 255 }
-	end
-
-	llay.Custom({
-		id = id,
-		layout = { sizing = { width = 52, height = 28 } },
-		backgroundColor = bg_color,
-		cornerRadius = 14,
-	}, function(rect, painter)
-		local knob_x = toggles[id] and (rect.x + rect.width - 16) or (rect.x + 4)
-		local knob_y = rect.y + rect.height / 2
-		painter:circle({ x = knob_x, y = knob_y }, 10, { r = 255, g = 255, b = 255, a = 255 })
-		if is_hovered then
-			painter:circle({ x = knob_x, y = knob_y }, 12, { r = 255, g = 255, b = 255, a = 30 })
-		end
-	end)
-
-	if is_hovered and rl.IsMouseButtonReleased(0) then
-		toggles[id] = not toggles[id]
-	end
-
-	return toggles[id]
-end
+-- ==================================================================================
+-- Text Measurement
+-- ==================================================================================
 
 local function measure_text(text, config, userdata)
 	local char_width = config.fontSize and config.fontSize / 1.5 or 10
@@ -105,6 +86,61 @@ local function measure_text(text, config, userdata)
 		height = config.fontSize or 20,
 	}
 end
+
+-- ==================================================================================
+-- Custom Toggle Widget using Custom Rendering
+-- ==================================================================================
+
+local function toggle(id, checked)
+	if toggles[id] == nil then
+		toggles[id] = checked
+	end
+
+	-- Get interaction state using capture API
+	local is_hovered = llay.pointer_over(id)
+	local is_captured = llay.is_captured(id)
+	
+	-- Visual states
+	local bg_color = toggles[id] and COLORS.TOGGLE_ON or COLORS.TOGGLE_OFF
+	if is_hovered and not toggles[id] then
+		bg_color = { r = 80, g = 85, b = 95, a = 255 }
+	end
+
+	-- Build element with custom rendering
+	llay.Custom({
+		id = id,
+		layout = { sizing = { width = 52, height = 28 } },
+		backgroundColor = bg_color,
+		cornerRadius = 14,
+	}, function(rect, painter)
+		local knob_x = toggles[id] and (rect.x + rect.width - 16) or (rect.x + 4)
+		local knob_y = rect.y + rect.height / 2
+		
+		-- Draw knob
+		painter:circle({ x = knob_x, y = knob_y }, 10, { r = 255, g = 255, b = 255, a = 255 })
+		
+		-- Draw hover glow
+		if is_hovered then
+			painter:circle({ x = knob_x, y = knob_y }, 12, { r = 255, g = 255, b = 255, a = 30 })
+		end
+	end)
+
+	-- Handle interaction using capture API
+	if is_hovered and rl.IsMouseButtonPressed(0) then
+		llay.capture(id)
+	end
+	
+	if is_captured and rl.IsMouseButtonReleased(0) then
+		toggles[id] = not toggles[id]
+		llay.release_capture()
+	end
+
+	return toggles[id]
+end
+
+-- ==================================================================================
+-- UI Layout
+-- ==================================================================================
 
 local function render_ui()
 	llay.begin_layout()
@@ -134,6 +170,7 @@ local function render_ui()
 			for i, name in ipairs({ "Core Engine", "UI Toolkit", "Network Layer", "Shaders" }) do
 				local nav_id = nav_ids[i]
 				local is_hovered = llay.pointer_over(nav_id)
+				
 				llay.Element({
 					id = nav_id,
 					layout = {
@@ -221,7 +258,7 @@ local function render_ui()
 		end)
 	end)
 
-	-- Floating Element (Tooltip)
+	-- Floating Element (Tooltip) - shows on hover
 	if llay.pointer_over("nav_1") then
 		local mouse_pos = rl.GetMousePosition()
 		llay.Element(llay.ID("tooltip"), {
@@ -242,55 +279,74 @@ local function render_ui()
 	commands = llay.end_layout()
 end
 
+-- ==================================================================================
+-- Initialization
+-- ==================================================================================
+
 rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(screen_w, screen_h, "Llay Workspace Demo - Raylib")
 
 llay.init(1024 * 1024 * 16, { width = screen_w, height = screen_h })
 llay.set_measure_text_function(measure_text)
 
+-- ==================================================================================
+-- Main Loop
+-- ==================================================================================
+
 while not rl.WindowShouldClose() do
+	-- Handle window resize
 	if rl.IsWindowResized() then
 		screen_w = rl.GetScreenWidth()
 		screen_h = rl.GetScreenHeight()
 		llay.set_dimensions(screen_w, screen_h)
 	end
 
+	-- Handle scroll input
 	local wheel = rl.GetMouseWheelMove()
 	if wheel ~= 0 then
 		scroll_dy = wheel * -30
 	end
 
+	-- Get pointer state
 	local mouse_pos = rl.GetMousePosition()
 	local mouse_down = rl.IsMouseButtonDown(0)
 
+	-- Build UI
 	render_ui()
 
+	-- Update llay pointer state
 	llay.set_pointer_state(mouse_pos.x, mouse_pos.y, mouse_down)
 
+	-- Update scroll containers
 	local scrolled = llay.update_scroll_containers(true, 0, scroll_dy, rl.GetFrameTime())
 	scroll_dy = 0
 
+	-- Rebuild if scrolled
 	if scrolled then
-		-- rebuild commands using the NEW scrollPosition
 		render_ui()
 	end
 
+	-- Periodic GC
 	last_gc_time = last_gc_time + rl.GetFrameTime()
 	if last_gc_time > 1.0 then
 		collectgarbage("step", 100)
 		last_gc_time = 0
 	end
 
+	-- ==================================================================================
+	-- Render
+	-- ==================================================================================
+
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.RAYWHITE)
 
-	-- Reset scissor state at start of frame
+	-- Reset scissor state
 	rl.EndScissorMode()
-	-- Clear lua-side stack
 	for k in pairs(scissor_stack) do
 		scissor_stack[k] = nil
 	end
 
+	-- Process render commands
 	if commands then
 		for i = 0, commands.length - 1 do
 			local cmd = commands.internalArray[i]
@@ -303,6 +359,7 @@ while not rl.WindowShouldClose() do
 				temp_rect.width = iround(b.width)
 				temp_rect.height = iround(b.height)
 				rl.DrawRectangleRec(temp_rect, ColorFromTable(c))
+				
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.BORDER then
 				local c = cmd.renderData.border.color
 				local w = cmd.renderData.border.width
@@ -311,15 +368,18 @@ while not rl.WindowShouldClose() do
 				temp_rect.width = iround(b.width)
 				temp_rect.height = iround(b.height)
 				rl.DrawRectangleLinesEx(temp_rect, w.left or 1, ColorFromTable(c))
+				
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.TEXT then
 				local d = cmd.renderData.text
 				local c = d.textColor
 				local text = ffi.string(d.stringContents.chars, d.stringContents.length)
 				local font_size = d.fontSize or 20
 				rl.DrawText(text, iround(b.x), iround(b.y), font_size, ColorFromTable(c))
+				
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_START then
 				table.insert(scissor_stack, { x = b.x, y = b.y, width = b.width, height = b.height })
 				rl.BeginScissorMode(math.floor(b.x), math.floor(b.y), math.ceil(b.width), math.ceil(b.height))
+				
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.SCISSOR_END then
 				table.remove(scissor_stack)
 				if #scissor_stack > 0 then
@@ -328,13 +388,13 @@ while not rl.WindowShouldClose() do
 				else
 					rl.EndScissorMode()
 				end
+				
 			elseif cmd.commandType == llay._core.Llay_RenderCommandType.CUSTOM then
 				local draw_fn = llay.get_render_callback(cmd.id)
 				if draw_fn then
 					local rect = { x = b.x, y = b.y, width = b.width, height = b.height }
 					local painter = {
 						rect = function(self, r, color, radius)
-							local c = color
 							temp_rect.x = iround(r.x)
 							temp_rect.y = iround(r.y)
 							temp_rect.width = iround(r.width)
@@ -343,7 +403,7 @@ while not rl.WindowShouldClose() do
 								temp_rect,
 								(radius or 0) / math.max(r.width, r.height),
 								4,
-								ColorFromTable(c)
+								ColorFromTable(color)
 							)
 						end,
 						circle = function(self, center, radius, color)

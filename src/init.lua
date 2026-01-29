@@ -59,6 +59,10 @@ function M.hovered()
 	return core.hovered()
 end
 
+function M.get_all_hovered_ids()
+	return core.get_all_hovered_ids()
+end
+
 function M.set_measure_text_function(fn, userData)
 	core.set_measure_text(fn, userData)
 end
