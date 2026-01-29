@@ -134,8 +134,15 @@ function M.hit_test(x, y)
 end
 
 function M.pointer_over(id_string)
-	local id = core.Llay__GetElementId(id_string)
-	return core.pointer_over(id.id)
+	local id
+	if type(id_string) == "string" then
+		id = core.Llay__GetElementId(id_string).id
+	elseif type(id_string) == "table" or type(id_string) == "cdata" then
+		id = id_string.id
+	else
+		id = id_string
+	end
+	return core.pointer_over(id)
 end
 
 -- Hashing helper for IDs
@@ -165,6 +172,18 @@ end
 
 function M.get_scroll_offset()
 	return core.get_scroll_offset()
+end
+
+function M.get_scroll_offset_for(id_variant)
+	return core.get_scroll_offset_for(id_variant)
+end
+
+function M.get_scroll_info_for(id_variant)
+	return core.get_scroll_info_for(id_variant)
+end
+
+function M.set_scroll_offset_for(id_variant, x, y)
+	return core.set_scroll_offset_for(id_variant, x, y)
 end
 
 -- Pointer Interaction Helpers

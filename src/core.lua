@@ -1589,7 +1589,9 @@ local function Clay__CalculateFinalLayout()
 	context.renderCommands.length = 0
 	dfsBuffer.length = 0
 
-	for i = 0, context.layoutElementTreeRoots.length - 1 do
+	-- NOTE: We push roots back-to-front onto a LIFO stack.
+	-- The DFS pop order (LIFO) becomes the render order, so this must iterate front-to-back.
+	for i = context.layoutElementTreeRoots.length - 1, 0, -1 do
 		local root = context.layoutElementTreeRoots.internalArray + i
 		local elem = context.layoutElements.internalArray + root.layoutElementIndex
 
@@ -2423,6 +2425,141 @@ function M.get_scroll_offset()
 	return { x = 0, y = 0 }
 end
 
+function M.get_scroll_offset_for(element_id)
+	if not element_id then
+		return { x = 0, y = 0 }
+	end
+	-- Allow cdata/table/string/number (shell normalizes IDs, but core can be called directly).
+	local id = element_id
+	if type(element_id) == "table" or type(element_id) == "cdata" then
+		id = element_id.id
+	elseif type(element_id) == "string" then
+		id = M.Llay__GetElementId(element_id).id
+	end
+	if not id or id == 0 then
+		return { x = 0, y = 0 }
+	end
+
+	for i = 0, context.scrollContainerDatas.length - 1 do
+		local mapping = context.scrollContainerDatas.internalArray + i
+		if mapping.elementId == id then
+			return { x = mapping.scrollPosition.x, y = mapping.scrollPosition.y }
+		end
+	end
+
+	return { x = 0, y = 0 }
+end
+
+function M.get_scroll_info_for(element_id)
+	if not element_id then
+		return { found = false }
+	end
+
+	local id = element_id
+	if type(element_id) == "table" or type(element_id) == "cdata" then
+		id = element_id.id
+	elseif type(element_id) == "string" then
+		id = M.Llay__GetElementId(element_id).id
+	end
+	if not id or id == 0 then
+		return { found = false }
+	end
+
+	for i = 0, context.scrollContainerDatas.length - 1 do
+		local mapping = context.scrollContainerDatas.internalArray + i
+		if mapping.elementId == id then
+			local elem = mapping.layoutElement
+			local clipUnion = elem and Llay__FindElementConfigWithType(elem, Llay__ElementConfigType.CLIP) or nil
+			local clip = clipUnion ~= nil and clipUnion.clipElementConfig or nil
+			return {
+				found = true,
+				id = id,
+				boundingBox = {
+					x = mapping.boundingBox.x,
+					y = mapping.boundingBox.y,
+					width = mapping.boundingBox.width,
+					height = mapping.boundingBox.height,
+				},
+				viewport = {
+					width = elem and elem.dimensions.width or 0,
+					height = elem and elem.dimensions.height or 0,
+				},
+				contentSize = {
+					width = mapping.contentSize.width,
+					height = mapping.contentSize.height,
+				},
+				scrollPosition = { x = mapping.scrollPosition.x, y = mapping.scrollPosition.y },
+				scrollMomentum = { x = mapping.scrollMomentum.x, y = mapping.scrollMomentum.y },
+				clip = {
+					horizontal = clip and clip.horizontal or false,
+					vertical = clip and clip.vertical or false,
+				},
+			}
+		end
+	end
+
+	return { found = false }
+end
+
+function M.set_scroll_offset_for(element_id, x, y)
+	if not element_id then
+		return { x = 0, y = 0 }
+	end
+
+	local id = element_id
+	if type(element_id) == "table" or type(element_id) == "cdata" then
+		id = element_id.id
+	elseif type(element_id) == "string" then
+		id = M.Llay__GetElementId(element_id).id
+	end
+	if not id or id == 0 then
+		return { x = 0, y = 0 }
+	end
+
+	for i = 0, context.scrollContainerDatas.length - 1 do
+		local mapping = context.scrollContainerDatas.internalArray + i
+		if mapping.elementId == id then
+			local elem = mapping.layoutElement
+			if not elem then
+				return { x = 0, y = 0 }
+			end
+
+			local clipUnion = Llay__FindElementConfigWithType(elem, Llay__ElementConfigType.CLIP)
+			if clipUnion == nil then
+				return { x = 0, y = 0 }
+			end
+
+			local clip = clipUnion.clipElementConfig
+
+			local nx = x or mapping.scrollPosition.x
+			local ny = y or mapping.scrollPosition.y
+
+			if not clip.horizontal then
+				nx = 0
+			end
+			if not clip.vertical then
+				ny = 0
+			end
+
+			local maxScrollX = -LLAY__MAX(mapping.contentSize.width - elem.dimensions.width, 0)
+			local maxScrollY = -LLAY__MAX(mapping.contentSize.height - elem.dimensions.height, 0)
+			nx = LLAY__MAX(LLAY__MIN(nx, 0), maxScrollX)
+			ny = LLAY__MAX(LLAY__MIN(ny, 0), maxScrollY)
+
+			mapping.scrollPosition.x = nx
+			mapping.scrollPosition.y = ny
+			mapping.scrollMomentum.x = 0
+			mapping.scrollMomentum.y = 0
+			mapping.pointerScrollActive = false
+			mapping.momentumTime = 0
+
+			return { x = nx, y = ny }
+		end
+	end
+
+	return { x = 0, y = 0 }
+end
+
 function M.set_dimensions(w, h)
 	context.layoutDimensions.width = w
 	context.layoutDimensions.height = h
@@ -2602,6 +2739,54 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 		-- Mark changed if friction modified position
 		if scrollData.scrollPosition.x ~= prevX or scrollData.scrollPosition.y ~= prevY then
 			changed = true
+		end
+
+		-- Clamp every open scroll container every frame (not just the hovered one).
+		-- Otherwise momentum can drift beyond bounds while the pointer is elsewhere, and then snap back on re-hover.
+		local scrollElement = scrollData.layoutElement
+		if scrollElement then
+			local clipUnion = Llay__FindElementConfigWithType(scrollElement, Llay__ElementConfigType.CLIP)
+			if clipUnion ~= nil then
+				local clip = clipUnion.clipElementConfig
+
+				if not clip.horizontal then
+					if scrollData.scrollPosition.x ~= 0 or scrollData.scrollMomentum.x ~= 0 then
+						scrollData.scrollPosition.x = 0
+						scrollData.scrollMomentum.x = 0
+						changed = true
+					end
+				else
+					local maxScrollX = -LLAY__MAX(scrollData.contentSize.width - scrollElement.dimensions.width, 0)
+					if scrollData.scrollPosition.x > 0 then
+						scrollData.scrollPosition.x = 0
+						scrollData.scrollMomentum.x = 0
+						changed = true
+					elseif scrollData.scrollPosition.x < maxScrollX then
+						scrollData.scrollPosition.x = maxScrollX
+						scrollData.scrollMomentum.x = 0
+						changed = true
+					end
+				end
+
+				if not clip.vertical then
+					if scrollData.scrollPosition.y ~= 0 or scrollData.scrollMomentum.y ~= 0 then
+						scrollData.scrollPosition.y = 0
+						scrollData.scrollMomentum.y = 0
+						changed = true
+					end
+				else
+					local maxScrollY = -LLAY__MAX(scrollData.contentSize.height - scrollElement.dimensions.height, 0)
+					if scrollData.scrollPosition.y > 0 then
+						scrollData.scrollPosition.y = 0
+						scrollData.scrollMomentum.y = 0
+						changed = true
+					elseif scrollData.scrollPosition.y < maxScrollY then
+						scrollData.scrollPosition.y = maxScrollY
+						scrollData.scrollMomentum.y = 0
+						changed = true
+					end
+				end
+			end
 		end
 
 		-- Find if pointer is over this container
@@ -2875,13 +3060,9 @@ function M.is_captured(element_id)
     return current_capture == element_id
 end
 
--- Hit test that respects capture semantics
--- Returns the topmost element ID under the point, or the captured element if capture is active
+-- Hit test (does not consider capture)
+-- Returns the topmost element ID under the pointer, or nil if nothing is under it.
 function M.hit_test(x, y)
-    if current_capture then
-        return current_capture
-    end
-    
     -- Return topmost from pointerOverIds (index 0 is frontmost after sorting)
     if context.pointerOverIds.length > 0 then
         return context.pointerOverIds.internalArray[0].id

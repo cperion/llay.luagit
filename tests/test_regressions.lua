@@ -304,6 +304,257 @@ local function run_custom_element_multiple_ids_regression()
 	assert(customCount == 3, "expected 3 CUSTOM commands, got " .. customCount)
 end
 
+local function run_hit_test_ignores_capture_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(200, 100)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	-- Build once to populate bounding boxes.
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
+			padding = 0,
+			childGap = 0,
+		},
+	}, function()
+		llay.Element({
+			id = "A",
+			layout = { sizing = { width = 60, height = 40 }, padding = 0 },
+			backgroundColor = { 255, 0, 0, 255 },
+		})
+		llay.Element({
+			id = "B",
+			layout = { sizing = { width = 60, height = 40 }, padding = 0 },
+			backgroundColor = { 0, 255, 0, 255 },
+		})
+	end)
+	llay.end_layout()
+
+	-- Pointer inside A should hit A.
+	llay.set_pointer_state(10, 10, false)
+	local a_id = llay.ID("A").id
+	local b_id = llay.ID("B").id
+	assert(llay.hit_test(10, 10) == a_id, "expected hit_test to return A when pointer is inside A")
+
+	-- Capture B, but hit_test should still reflect what's under the pointer.
+	llay.capture(b_id)
+	assert(llay.get_capture() == b_id, "expected capture to be B after llay.capture")
+	assert(llay.hit_test(10, 10) == a_id, "expected hit_test to ignore capture and still return A")
+
+	llay.release_capture()
+	assert(llay.get_capture() == nil, "expected capture to be released")
+end
+
+local function run_z_index_controls_render_and_hit_order_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(200, 100)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = 0,
+			childGap = 0,
+		},
+	}, function()
+		llay.Element({
+			id = "Back",
+			layout = { sizing = { width = 50, height = 50 }, padding = 0 },
+			backgroundColor = { 255, 0, 0, 255 },
+			floating = {
+				attachTo = llay.FloatingAttachToElement.ROOT,
+				zIndex = 10,
+				offset = { x = 0, y = 0 },
+			},
+		})
+
+		llay.Element({
+			id = "Front",
+			layout = { sizing = { width = 50, height = 50 }, padding = 0 },
+			backgroundColor = { 0, 255, 0, 255 },
+			floating = {
+				attachTo = llay.FloatingAttachToElement.ROOT,
+				zIndex = 20,
+				offset = { x = 0, y = 0 },
+			},
+		})
+	end)
+	local commands = llay.end_layout()
+
+	local back_id = llay.ID("Back").id
+	local front_id = llay.ID("Front").id
+
+	-- Higher zIndex must be hit-tested as topmost.
+	llay.set_pointer_state(10, 10, false)
+	assert(llay.hit_test(10, 10) == front_id, "expected hit_test to return Front (higher zIndex)")
+
+	-- Higher zIndex must be rendered last (on top).
+	local back_cmd_i = nil
+	local front_cmd_i = nil
+	for i = 0, tonumber(commands.length) - 1 do
+		local cmd = commands.internalArray[i]
+		if cmd.commandType == llay._core.Llay_RenderCommandType.RECTANGLE then
+			local cid = tonumber(cmd.id)
+			if cid == back_id and back_cmd_i == nil then
+				back_cmd_i = i
+			elseif cid == front_id and front_cmd_i == nil then
+				front_cmd_i = i
+			end
+		end
+	end
+
+	assert(back_cmd_i ~= nil, "expected to find RECTANGLE render command for Back")
+	assert(front_cmd_i ~= nil, "expected to find RECTANGLE render command for Front")
+	assert(back_cmd_i < front_cmd_i, "expected Back to render before Front (Front on top)")
+end
+
+local function run_scroll_momentum_clamps_while_not_hovered_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(200, 200)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	-- Frame 1: build a scroll container with overflowing content.
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = 0,
+		},
+	}, function()
+		llay.Element({
+			id = "Scroll",
+			layout = {
+				sizing = { width = 100, height = 50 },
+				layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+				padding = 0,
+				childGap = 0,
+			},
+			clip = { vertical = true, horizontal = false },
+		}, function()
+			for _ = 1, 3 do
+				llay.Element({
+					layout = {
+						sizing = { width = 100, height = 40 },
+						padding = 0,
+					},
+					backgroundColor = { 255, 255, 255, 255 },
+				})
+			end
+		end)
+	end)
+	llay.end_layout()
+
+	-- Frame 2: start drag inside to initialize pointerScrollActive.
+	llay.set_pointer_state(10, 40, true) -- pressed inside Scroll
+	llay.update_scroll_containers(true, 0, 0, 1 / 60)
+
+	-- Frame 3: drag upward while still inside to create a negative scroll offset.
+	llay.set_pointer_state(10, 10, true)
+	llay.update_scroll_containers(true, 0, 0, 1 / 60)
+
+	-- Frame 4: release outside; this should start momentum.
+	llay.set_pointer_state(150, 150, false) -- not hovering Scroll
+	llay.update_scroll_containers(true, 0, 0, 1 / 60)
+
+	-- Frame 5: keep updating while still not hovered; momentum must not drift past clamp.
+	llay.begin_layout()
+	llay.Element({ layout = { sizing = { width = "GROW", height = "GROW" }, padding = 0 } }, function()
+		llay.Element({
+			id = "Scroll",
+			layout = {
+				sizing = { width = 100, height = 50 },
+				layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+				padding = 0,
+				childGap = 0,
+			},
+			clip = { vertical = true, horizontal = false },
+		}, function()
+			for _ = 1, 3 do
+				llay.Element({
+					layout = {
+						sizing = { width = 100, height = 40 },
+						padding = 0,
+					},
+					backgroundColor = { 255, 255, 255, 255 },
+				})
+			end
+		end)
+	end)
+	llay.end_layout()
+
+	llay.set_pointer_state(150, 150, false)
+	llay.update_scroll_containers(true, 0, 0, 1 / 60)
+
+	local off = llay.get_scroll_offset_for("Scroll")
+	assert(off ~= nil, "expected to read scroll offset for Scroll")
+
+	local max_scroll_y = -(120 - 50) -- contentHeight - viewportHeight
+	assert(off.y <= 0, "expected scroll offset y <= 0")
+	assert(off.y >= max_scroll_y, "expected scroll offset y to stay clamped while not hovered")
+end
+
+local function run_set_scroll_offset_for_clamps_and_clears_momentum_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(200, 200)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	-- Frame 1: build a scroll container with overflowing content.
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = 0,
+		},
+	}, function()
+		llay.Element({
+			id = "Scroll",
+			layout = {
+				sizing = { width = 100, height = 50 },
+				layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+				padding = 0,
+				childGap = 0,
+			},
+			clip = { vertical = true, horizontal = false },
+		}, function()
+			for _ = 1, 3 do
+				llay.Element({
+					layout = {
+						sizing = { width = 100, height = 40 },
+						padding = 0,
+					},
+					backgroundColor = { 255, 255, 255, 255 },
+				})
+			end
+		end)
+	end)
+	llay.end_layout()
+
+	local max_scroll_y = -(120 - 50)
+
+	-- Set an out-of-range value; should clamp.
+	local set = llay.set_scroll_offset_for("Scroll", 0, -9999)
+	assert(set.y == max_scroll_y, "expected set_scroll_offset_for to clamp to max scroll")
+
+	local info = llay.get_scroll_info_for("Scroll")
+	assert(info and info.found, "expected scroll info for Scroll")
+	assert(info.scrollPosition.y == max_scroll_y, "expected scrollPosition to match clamped value")
+	assert(info.scrollMomentum.y == 0, "expected set_scroll_offset_for to clear momentum")
+end
+
 return {
 	{
 		name = "regression_text_element_bbox_matches_measured",
@@ -328,5 +579,21 @@ return {
 	{
 		name = "regression_custom_element_multiple_ids",
 		fn = run_custom_element_multiple_ids_regression,
+	},
+	{
+		name = "regression_hit_test_ignores_capture",
+		fn = run_hit_test_ignores_capture_regression,
+	},
+	{
+		name = "regression_z_index_controls_render_and_hit_order",
+		fn = run_z_index_controls_render_and_hit_order_regression,
+	},
+	{
+		name = "regression_scroll_momentum_clamps_while_not_hovered",
+		fn = run_scroll_momentum_clamps_while_not_hovered_regression,
+	},
+	{
+		name = "regression_set_scroll_offset_for_clamps_and_clears_momentum",
+		fn = run_set_scroll_offset_for_clamps_and_clears_momentum_regression,
 	},
 }
