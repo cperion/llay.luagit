@@ -55,12 +55,43 @@ function M.get_element_data(id_variant)
 	return core.get_element_data(id)
 end
 
+-- Get element rectangle from previous frame layout (geometry-only query)
+-- Returns: { found = bool, x = number, y = number, width = number, height = number }
+function M.get_rect(id_variant)
+	local id
+	if type(id_variant) == "string" then
+		id = core.Llay__GetElementId(id_variant).id
+	elseif type(id_variant) == "table" or type(id_variant) == "cdata" then
+		id = id_variant.id
+	else
+		id = id_variant
+	end
+	local data = core.get_element_data(id)
+	if data and data.found then
+		return {
+			found = true,
+			x = data.boundingBox.x,
+			y = data.boundingBox.y,
+			width = data.boundingBox.width,
+			height = data.boundingBox.height
+		}
+	end
+	return { found = false, x = 0, y = 0, width = 0, height = 0 }
+end
+
 function M.hovered()
 	return core.hovered()
 end
 
 function M.get_all_hovered_ids()
 	return core.get_all_hovered_ids()
+end
+
+-- Get ordered hit path at position (x,y)
+-- Returns array of element IDs ordered from topmost (front) to bottom (back)
+-- This includes all hovered elements with proper parent bubbling
+function M.get_hit_path(x, y)
+	return core.get_hit_path(x, y)
 end
 
 function M.set_measure_text_function(fn, userData)
@@ -154,6 +185,10 @@ function M.IDI(str, index)
 	return shell.IDI(str, index)
 end
 
+function M.HashNumber(offset, seed)
+	return core.Llay__HashNumber(offset, seed or 0)
+end
+
 function M.ID_LOCAL(str)
 	return shell.ID_LOCAL(str)
 end
@@ -169,6 +204,18 @@ end
 function M.sort_z_order()
 	core.sort_roots_by_z()
 end
+
+-- Render command type constants
+M.RenderCommandType = {
+	NONE = 0,
+	RECTANGLE = 1,
+	BORDER = 2,
+	TEXT = 3,
+	IMAGE = 4,
+	CUSTOM = 5,
+	SCISSOR_START = 6,
+	SCISSOR_END = 7,
+}
 
 function M.get_scroll_offset()
 	return core.get_scroll_offset()

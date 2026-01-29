@@ -259,21 +259,34 @@ end
 function M.Element(arg1, arg2, arg3)
 	-- Handle multiple patterns for compatibility:
 	-- 1. CLAY(id, config) { children } -> Element(id, config, children_fn) - C API style
-	-- 2. CLAY(config) { children } -> Element(config, children_fn) - Lua convenience style
-	-- 3. Element(config) -> Element(config) - No children
+	-- 2. CLAY(string_id, config) { children } -> Element(string, config, children_fn) - Auto-hash
+	-- 3. CLAY(number_id, config) { children } -> Element(number, config, children_fn) - Auto-hash
+	-- 4. CLAY(config) { children } -> Element(config, children_fn) - Lua convenience style
+	-- 5. Element(config) -> Element(config) - No children
 
 	local id = nil
 	local config = nil
 	local children_fn = nil
 
 	-- Pattern detection
-	if type(arg1) == "table" and arg1.id ~= nil and type(arg1.id) == "number" then
+	local arg1_type = type(arg1)
+	if arg1_type == "string" then
+		-- Pattern 2: First arg is a string ID, auto-hash it
+		id = core.Llay__GetElementId(arg1)
+		config = arg2
+		children_fn = arg3
+	elseif arg1_type == "number" then
+		-- Pattern 3: First arg is a number ID, hash it with seed 0
+		id = core.Llay__HashNumber(arg1, 0)
+		config = arg2
+		children_fn = arg3
+	elseif arg1_type == "table" and arg1.id ~= nil and type(arg1.id) == "number" then
 		-- Pattern 1: First arg is Clay_ElementId (table or cdata)
 		id = arg1
 		config = arg2
 		children_fn = arg3
-	elseif type(arg1) == "table" then
-		-- Pattern 2 or 3: First arg is config table
+	elseif arg1_type == "table" then
+		-- Pattern 4 or 5: First arg is config table
 		config = arg1
 		children_fn = arg2
 	end
@@ -316,10 +329,13 @@ function M.Element(arg1, arg2, arg3)
 
 		-- Check if config has an id field - convenience pattern
 		if config.id and not id then
-			if type(config.id) == "string" then
-				id = M.ID(config.id)
-			elseif type(config.id) == "table" or type(config.id) == "cdata" then
-				id = config.id
+			local cid = config.id
+			if type(cid) == "string" then
+				id = core.Llay__GetElementId(cid)
+			elseif type(cid) == "number" then
+				id = core.Llay__HashNumber(cid, 0)
+			elseif type(cid) == "table" or type(cid) == "cdata" then
+				id = cid
 			end
 		end
 	end

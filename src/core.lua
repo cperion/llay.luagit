@@ -2979,6 +2979,10 @@ function M.Llay__HashStringWithOffset(str, offset, seed)
 	return Llay__HashStringWithOffset(str, offset, seed)
 end
 
+function M.Llay__HashNumber(offset, seed)
+	return Llay__HashNumber(offset, seed)
+end
+
 -- Internal functions for interaction API
 function M._get_open_element()
 	return Llay__GetOpenLayoutElement()
@@ -3101,6 +3105,19 @@ end
 
 -- Return all element IDs under the pointer (for parent-child hit testing)
 function M.get_all_hovered_ids()
+	local result = {}
+	for i = 0, context.pointerOverIds.length - 1 do
+		result[i + 1] = context.pointerOverIds.internalArray[i].id
+	end
+	return result
+end
+
+-- Get ordered hit path at position (x,y)
+-- Returns array of element IDs ordered from topmost (front) to bottom (back)
+-- This includes all hovered elements with proper parent bubbling
+function M.get_hit_path(x, y)
+	-- Use the already-computed pointerOverIds from set_pointer_state
+	-- Returns IDs in order: [0] = topmost/front, [n] = bottom/back
 	local result = {}
 	for i = 0, context.pointerOverIds.length - 1 do
 		result[i + 1] = context.pointerOverIds.internalArray[i].id

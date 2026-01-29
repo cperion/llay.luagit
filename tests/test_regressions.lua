@@ -555,6 +555,60 @@ local function run_set_scroll_offset_for_clamps_and_clears_momentum_regression()
 	assert(info.scrollMomentum.y == 0, "expected set_scroll_offset_for to clear momentum")
 end
 
+local function run_get_hit_path_parent_bubbling_regression()
+	llay.init(1024 * 1024 * 16)
+	llay.set_dimensions(200, 100)
+	llay.set_measure_text_function(function(text, config, userData)
+		return { width = #text * 10, height = 20 }
+	end)
+
+	-- Build layout with nested elements
+	llay.begin_layout()
+	llay.Element({
+		layout = {
+			sizing = { width = "GROW", height = "GROW" },
+			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
+			padding = 0,
+		},
+	}, function()
+		llay.Element({
+			id = "Parent",
+			layout = {
+				sizing = { width = 100, height = 50 },
+				padding = 10,
+			},
+			backgroundColor = { 255, 0, 0, 255 },
+		}, function()
+			llay.Element({
+				id = "Child",
+				layout = { sizing = { width = 80, height = 30 } },
+				backgroundColor = { 0, 255, 0, 255 },
+			})
+		end)
+	end)
+	llay.end_layout()
+
+	local parent_id = llay.ID("Parent").id
+	local child_id = llay.ID("Child").id
+
+	-- Pointer inside child (which is inside parent)
+	llay.set_pointer_state(50, 25, false)
+
+	-- get_hit_path should return both child and parent (child first/topmost)
+	local hit_path = llay.get_hit_path(50, 25)
+	assert(#hit_path >= 2, "expected hit_path to contain at least 2 elements (child + parent)")
+	assert(hit_path[1] == child_id, "expected first hit_path element to be Child (topmost)")
+	assert(hit_path[2] == parent_id, "expected second hit_path element to be Parent (bubbled)")
+
+	-- Test outside - set pointer to empty area first, then query
+	llay.set_pointer_state(150, 75, false)
+	local outside_path = llay.get_hit_path(150, 75)
+	-- Outside path may be empty or contain root, but shouldn't contain our elements
+	for _, id in ipairs(outside_path) do
+		assert(id ~= child_id and id ~= parent_id, "expected outside path to not contain Parent or Child")
+	end
+end
+
 return {
 	{
 		name = "regression_text_element_bbox_matches_measured",
@@ -595,5 +649,9 @@ return {
 	{
 		name = "regression_set_scroll_offset_for_clamps_and_clears_momentum",
 		fn = run_set_scroll_offset_for_clamps_and_clears_momentum_regression,
+	},
+	{
+		name = "regression_get_hit_path_parent_bubbling",
+		fn = run_get_hit_path_parent_bubbling_regression,
 	},
 }
