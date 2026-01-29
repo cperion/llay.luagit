@@ -2453,6 +2453,24 @@ function M.set_pointer_state(position, isPointerDown)
 
 	context.pointerOverIds.length = 0
 	local found_capture = false
+	
+	-- If we have a captured element, check if pointer is still over it
+	if current_capture then
+		local captured_item = Llay__GetHashMapItem(current_capture)
+		if captured_item then
+			-- Always add captured element to pointerOverIds (even if pointer outside)
+			element_id_array_add(context.pointerOverIds, captured_item.elementId)
+		end
+		
+		-- Auto-release capture on mouse up if not manually captured
+		if not isPointerDown and not _capture_is_manual then
+			current_capture = nil
+		end
+		
+		-- If we have capture, we still do hit testing for the captured element
+		-- but we don't fill pointerOverIds for other elements
+		-- (they're already blocked by the early return below)
+	end
 
 	-- Iterate from high index to low (front to back)
 	for rootIndex = context.layoutElementTreeRoots.length - 1, 0, -1 do
@@ -2533,18 +2551,20 @@ end
 -- SCROLL SYSTEM
 -- ==================================================================================
 
-function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime, capture_owner_id)
-	capture_owner_id = capture_owner_id or 0  -- 0 means no capture
+function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime)
 	local isPointerActive = enableDragScrolling and (context.pointerInfo.state <= 1) -- PRESSED_THIS_FRAME or PRESSED
 	local highestPriorityScrollData = nil
 	local changed = false
+	
+	-- Use internal capture state
+	local capture_owner_id = current_capture or 0  -- 0 means no capture
 
 	for i = 0, context.scrollContainerDatas.length - 1 do
 		local scrollData = context.scrollContainerDatas.internalArray + i
 		if not scrollData.openThisFrame then goto next_scroll end
 
-		-- FIX 2: If we have a capture owner, only process if this scroll container IS the owner
-		-- or is a child of the owner
+		-- If we have a capture owner, only process if this scroll container IS the owner
+		-- This prevents background scrollers from stealing events during capture
 		if capture_owner_id ~= 0 and scrollData.elementId ~= capture_owner_id then
 			goto next_scroll
 		end
@@ -2577,12 +2597,11 @@ function M.update_scroll_containers(enableDragScrolling, scrollDelta, deltaTime,
 		end
 
 		-- Find if pointer is over this container
-		-- Iterate in REVERSE to find the LAST added (topmost) element first
-		-- pointerOverIds is filled back-to-front during hit testing, so last = top
-		for j = context.pointerOverIds.length - 1, 0, -1 do
+		-- Check all pointer over elements to find if this scroll container is under the pointer
+		for j = 0, context.pointerOverIds.length - 1 do
 			if scrollData.elementId == context.pointerOverIds.internalArray[j].id then
 				highestPriorityScrollData = scrollData
-				break -- Take the last (topmost) match
+				break
 			end
 		end
 		::next_scroll::
@@ -2736,6 +2755,20 @@ function M.pointer_over(id)
 	return false
 end
 
+-- Get the topmost element ID under the pointer (frontmost in Z-order)
+-- Returns nil if no elements are under the pointer
+function M.get_topmost_element()
+	if context.pointerOverIds.length > 0 then
+		return context.pointerOverIds.internalArray[0].id
+	end
+	return nil
+end
+
+-- Check if an element ID is in the pointerOverIds list
+function M.is_pointer_over(id)
+	return M.pointer_over(id)
+end
+
 function M.get_parent_element_id()
 	if context.openLayoutElementStack.length < 1 then
 		return 0
@@ -2809,6 +2842,56 @@ function M.get_element_data(id)
 	}
 end
 
+-- ==================================================================================
+-- CAPTURE API - Input capture management for deep module architecture
+-- ==================================================================================
+
+local current_capture = nil  -- element_id or nil
+local _capture_is_manual = false
+
+function M.capture(element_id)
+    current_capture = element_id
+    _capture_is_manual = true
+end
+
+function M.release_capture()
+    current_capture = nil
+    _capture_is_manual = false
+end
+
+function M.get_capture()
+    return current_capture
+end
+
+function M.is_captured(element_id)
+    return current_capture == element_id
+end
+
+-- Hit test that respects capture semantics
+-- Returns the topmost element ID under the point, or the captured element if capture is active
+function M.hit_test(x, y)
+    if current_capture then
+        return current_capture
+    end
+    
+    -- Return topmost from pointerOverIds (index 0 is frontmost after sorting)
+    if context.pointerOverIds.length > 0 then
+        return context.pointerOverIds.internalArray[0].id
+    end
+    return nil
+end
+
+-- Check if point is inside element's bounding box
+function M.point_in_element(x, y, element_id)
+    local item = Llay__GetHashMapItem(element_id)
+    if not item then return false end
+    return M.point_is_inside_rect({x = x, y = y}, item.boundingBox)
+end
+
+-- ==================================================================================
+-- INTERACTION API
+-- ==================================================================================
+
 function M.hovered()
 	if context.booleanWarnings.maxElementsExceeded then return false end
 
@@ -2826,5 +2909,9 @@ function M.hovered()
 	end
 	return false
 end
+
+-- Export internal functions for advanced usage
+M.Llay__GetHashMapItem = Llay__GetHashMapItem
+M.Llay__FindElementConfigWithType = Llay__FindElementConfigWithType
 
 return M

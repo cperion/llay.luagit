@@ -101,8 +101,32 @@ function M.set_pointer_state(x, y, is_down)
 	core.set_pointer_state({ x = x, y = y }, is_down)
 end
 
-function M.update_scroll_containers(enable_drag, dx, dy, dt, capture_owner_id)
-	return core.update_scroll_containers(enable_drag, { x = dx, y = dy }, dt, capture_owner_id)
+function M.update_scroll_containers(enable_drag, dx, dy, dt)
+	return core.update_scroll_containers(enable_drag, { x = dx, y = dy }, dt)
+end
+
+-- ==================================================================================
+-- Capture API - Deep module for input capture management
+-- ==================================================================================
+
+function M.capture(element_id)
+	return core.capture(element_id)
+end
+
+function M.release_capture()
+	return core.release_capture()
+end
+
+function M.get_capture()
+	return core.get_capture()
+end
+
+function M.is_captured(element_id)
+	return core.is_captured(element_id)
+end
+
+function M.hit_test(x, y)
+	return core.hit_test(x, y)
 end
 
 function M.pointer_over(id_string)
