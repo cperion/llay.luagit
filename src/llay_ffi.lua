@@ -3,8 +3,8 @@ local ffi = require("ffi")
 -- Define types only once (handle multiple requires)
 local clay_ffi_defined = package.loaded["clay_ffi_loaded"]
 if not clay_ffi_defined then
-    pcall(function()
-        ffi.cdef([[
+	pcall(function()
+		ffi.cdef([[
     // =========================================================================
     // PRIMITIVES & FORWARD DECLARATIONS
     // =========================================================================
@@ -591,8 +591,8 @@ if not clay_ffi_defined then
         Clay__DebugElementDataArray debugElementData;
     } Clay_Context;
 ]])
-    end)
-    package.loaded["clay_ffi_loaded"] = true
+	end)
+	package.loaded["clay_ffi_loaded"] = true
 end
 
 return {}

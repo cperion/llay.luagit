@@ -29,12 +29,12 @@ rl.SetConfigFlags(rl.FLAG_VSYNC_HINT)
 rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Llay + Raylib Demo")
 
 -- Initialize llay with 16MB arena
-llay.init(1024 * 1024 * 16, {width = WINDOW_WIDTH, height = WINDOW_HEIGHT})
+llay.init(1024 * 1024 * 16, { width = WINDOW_WIDTH, height = WINDOW_HEIGHT })
 
 -- Mock text measurement (Raylib text measurement is complex for now)
 -- 10px wide per character, 20px height
 llay.set_measure_text_function(function(text, config, userdata)
-	return {width = #text * 10, height = 20}
+	return { width = #text * 10, height = 20 }
 end)
 
 -- Main loop
@@ -47,41 +47,41 @@ while not rl.WindowShouldClose() do
 			sizing = { width = "GROW", height = "GROW" },
 			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
 			padding = { 20, 20, 20, 20 },
-			childGap = 16
+			childGap = 16,
 		},
-		backgroundColor = { r = 43, g = 43, b = 43, a = 255 }
+		backgroundColor = { r = 43, g = 43, b = 43, a = 255 },
 	}, function()
 		-- Title
 		llay.Text("Llay + Raylib Demo", {
 			fontSize = 32,
-			color = { r = 220, g = 220, b = 220, a = 255 }
+			color = { r = 220, g = 220, b = 220, a = 255 },
 		})
 
 		-- Subtitle
 		llay.Text("Working!", {
 			fontSize = 20,
-			color = { r = 180, g = 220, b = 255, a = 255 }
+			color = { r = 180, g = 220, b = 255, a = 255 },
 		})
 
 		-- Card row
 		llay.Element({
 			layout = {
 				layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
-				childGap = 16
-			}
+				childGap = 16,
+			},
 		}, function()
 			for i = 1, 3 do
 				llay.Element({
 					layout = {
 						sizing = { width = "GROW", height = 150 },
-						padding = { 16, 16, 16, 16 }
+						padding = { 16, 16, 16, 16 },
 					},
 					backgroundColor = { r = 60 + i * 20, g = 60 + i * 20, b = 100 + i * 20, a = 255 },
-					cornerRadius = 8
+					cornerRadius = 8,
 				}, function()
 					llay.Text("Card " .. i, {
 						fontSize = 18,
-						color = { r = 255, g = 255, b = 255, a = 255 }
+						color = { r = 255, g = 255, b = 255, a = 255 },
 					})
 				end)
 			end
@@ -108,7 +108,7 @@ while not rl.WindowShouldClose() do
 					x = bounds.x,
 					y = bounds.y,
 					width = bounds.width,
-					height = bounds.height
+					height = bounds.height,
 				}),
 				Color(color.r, color.g, color.b, color.a)
 			)

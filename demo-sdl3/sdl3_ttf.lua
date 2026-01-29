@@ -6,7 +6,7 @@ local ffi = require("ffi")
 -- Load SDL3 types first (SDL_Color, SDL_Surface, etc.)
 require("sdl3_ffi")
 
-ffi.cdef[[
+ffi.cdef([[
     // SDL3_ttf types
     typedef struct TTF_Font TTF_Font;
     typedef struct TTF_Text TTF_Text;
@@ -31,19 +31,19 @@ ffi.cdef[[
     
     // Text measurement (SDL3_ttf API uses TTF_GetStringSize, not TTF_GetTextSize)
     bool TTF_GetStringSize(TTF_Font *font, const char *text, size_t length, int *w, int *h);
-]]
+]])
 
 local lib = ffi.load("SDL3_ttf")
 
 return {
-    init = lib.TTF_Init,
-    quit = lib.TTF_Quit,
-    openFont = lib.TTF_OpenFont,
-    closeFont = lib.TTF_CloseFont,
-    setFontSize = lib.TTF_SetFontSize,
-    getFontHeight = lib.TTF_GetFontHeight,
-    getFontSize = lib.TTF_GetFontSize,
-    renderTextSolid = lib.TTF_RenderText_Solid,
-    renderTextBlended = lib.TTF_RenderText_Blended,
-    getStringSize = lib.TTF_GetStringSize,  -- Correct SDL3 function name
+	init = lib.TTF_Init,
+	quit = lib.TTF_Quit,
+	openFont = lib.TTF_OpenFont,
+	closeFont = lib.TTF_CloseFont,
+	setFontSize = lib.TTF_SetFontSize,
+	getFontHeight = lib.TTF_GetFontHeight,
+	getFontSize = lib.TTF_GetFontSize,
+	renderTextSolid = lib.TTF_RenderText_Solid,
+	renderTextBlended = lib.TTF_RenderText_Blended,
+	getStringSize = lib.TTF_GetStringSize, -- Correct SDL3 function name
 }

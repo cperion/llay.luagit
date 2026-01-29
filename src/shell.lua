@@ -11,11 +11,13 @@ local M = {}
 local _render_callbacks = {}
 
 function M._reset_render_callbacks()
-    for k in pairs(_render_callbacks) do _render_callbacks[k] = nil end
+	for k in pairs(_render_callbacks) do
+		_render_callbacks[k] = nil
+	end
 end
 
 function M.get_render_callback(id)
-    return _render_callbacks[id]
+	return _render_callbacks[id]
 end
 
 -- ==================================================================================
@@ -259,14 +261,14 @@ function M.Element(arg1, arg2, arg3)
 	-- 1. CLAY(id, config) { children } -> Element(id, config, children_fn) - C API style
 	-- 2. CLAY(config) { children } -> Element(config, children_fn) - Lua convenience style
 	-- 3. Element(config) -> Element(config) - No children
-	
+
 	local id = nil
 	local config = nil
 	local children_fn = nil
-	
+
 	-- Pattern detection
 	if type(arg1) == "table" and arg1.id ~= nil and type(arg1.id) == "number" then
-		-- Pattern 1: First arg is Clay_ElementId
+		-- Pattern 1: First arg is Clay_ElementId (table or cdata)
 		id = arg1
 		config = arg2
 		children_fn = arg3
@@ -275,10 +277,10 @@ function M.Element(arg1, arg2, arg3)
 		config = arg1
 		children_fn = arg2
 	end
-	
+
 	-- Parse config
 	local declaration = ffi.new("Clay_ElementDeclaration")
-	
+
 	if config then
 		local layout_config = parse_layout_config(config.layout)
 		declaration.layout = layout_config
@@ -311,10 +313,14 @@ function M.Element(arg1, arg2, arg3)
 		if config.userData then
 			declaration.userData = config.userData
 		end
-		
-		-- Check if config has an id field (string) - convenience pattern
-		if config.id and type(config.id) == "string" and not id then
-			id = M.ID(config.id)
+
+		-- Check if config has an id field - convenience pattern
+		if config.id and not id then
+			if type(config.id) == "string" then
+				id = M.ID(config.id)
+			elseif type(config.id) == "table" or type(config.id) == "cdata" then
+				id = config.id
+			end
 		end
 	end
 
@@ -324,10 +330,11 @@ function M.Element(arg1, arg2, arg3)
 	else
 		core.open_element()
 	end
-	
+
 	-- Auto-fill childOffset if clip is enabled but not provided
 	-- This must happen AFTER open_element because get_scroll_offset() queries the open element
-	local needsChildOffset = config.clip and (config.clip.childOffset == nil or type(config.clip.childOffset) == "function")
+	local needsChildOffset = config.clip
+		and (config.clip.childOffset == nil or type(config.clip.childOffset) == "function")
 	if needsChildOffset then
 		local offset
 		if type(config.clip.childOffset) == "function" then
@@ -339,7 +346,7 @@ function M.Element(arg1, arg2, arg3)
 		declaration.clip.childOffset.x = offset.x or 0
 		declaration.clip.childOffset.y = offset.y or 0
 	end
-	
+
 	core.configure_open_element(declaration)
 
 	if children_fn then
@@ -356,8 +363,18 @@ function M.Text(text, config)
 end
 
 function M.Custom(config, render_fn)
-	local id_str = config.id or ("auto_cust_" .. tostring(#_render_callbacks))
-	local id_obj = core.Llay__GetElementId(id_str)
+	local id_obj
+	if config.id then
+		if type(config.id) == "string" then
+			id_obj = core.Llay__GetElementId(config.id)
+		else
+			-- Assume it is an ID object (table or cdata)
+			id_obj = config.id
+		end
+	else
+		local id_str = "auto_cust_" .. tostring(#_render_callbacks)
+		id_obj = core.Llay__GetElementId(id_str)
+	end
 
 	_render_callbacks[id_obj.id] = render_fn
 

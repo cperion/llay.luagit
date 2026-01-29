@@ -166,8 +166,8 @@ layouts.corners_borders = function()
 			cornerRadius = { 20, 20, 20, 20 },
 			border = {
 				color = { 0, 0, 0, 255 },
-				width = 5
-			}
+				width = 5,
+			},
 		})
 	end)
 	return clay.end_layout()
@@ -249,7 +249,7 @@ layouts.border_between_children = function()
 			backgroundColor = { 240, 240, 240, 255 },
 			border = {
 				color = { 0, 0, 0, 255 },
-				width = { left = 5, right = 5, top = 5, bottom = 5, betweenChildren = 5 }
+				width = { left = 5, right = 5, top = 5, bottom = 5, betweenChildren = 5 },
 			},
 		}, function()
 			clay.Element({

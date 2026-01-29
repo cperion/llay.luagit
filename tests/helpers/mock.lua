@@ -13,5 +13,5 @@ local function create_mock_measure()
 end
 
 return {
-    create_mock_measure = create_mock_measure,
+	create_mock_measure = create_mock_measure,
 }

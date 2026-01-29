@@ -25,5 +25,5 @@ local llay = require("init")
 print("Llay loaded")
 
 print("Initializing llay...")
-llay.init(1024 * 1024, {width = 400, height = 300})
+llay.init(1024 * 1024, { width = 400, height = 300 })
 print("Llay initialized")

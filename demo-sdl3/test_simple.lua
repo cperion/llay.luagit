@@ -29,10 +29,10 @@ while running do
 			running = false
 		end
 	end
-	
+
 	sdl.setRenderDrawColor(renderer, 43, 43, 43, 255)
 	sdl.renderClear(renderer)
-	
+
 	-- Render some text
 	local text = "Hello"
 	local color = ffi.new("SDL_Color", 255, 255, 255, 255)
@@ -46,7 +46,7 @@ while running do
 		end
 		sdl.destroySurface(surface)
 	end
-	
+
 	sdl.renderPresent(renderer)
 	sdl.delay(16)
 end

@@ -44,7 +44,7 @@ local function compare_with_golden(test_name, golden_file)
 				x = tonumber(x),
 				y = tonumber(y),
 				w = tonumber(w),
-				h = tonumber(h)
+				h = tonumber(h),
 			})
 		end
 	end
@@ -60,21 +60,29 @@ local function compare_with_golden(test_name, golden_file)
 		local golden = golden[i + 1]
 
 		local bb = lua_cmd.boundingBox
-		if math.abs(bb.x - golden.x) > 0.01 or
-		   math.abs(bb.y - golden.y) > 0.01 or
-		   math.abs(bb.width - golden.w) > 0.01 or
-		   math.abs(bb.height - golden.h) > 0.01 then
+		if
+			math.abs(bb.x - golden.x) > 0.01
+			or math.abs(bb.y - golden.y) > 0.01
+			or math.abs(bb.width - golden.w) > 0.01
+			or math.abs(bb.height - golden.h) > 0.01
+		then
 			print(string.format("  FAIL: Command %d bbox mismatch", i))
-			print(string.format("        Expected: {x=%.2f,y=%.2f,w=%.2f,h=%.2f}",
-				golden.x, golden.y, golden.w, golden.h))
-			print(string.format("        Got:      {x=%.2f,y=%.2f,w=%.2f,h=%.2f}",
-				bb.x, bb.y, bb.width, bb.height))
+			print(
+				string.format("        Expected: {x=%.2f,y=%.2f,w=%.2f,h=%.2f}", golden.x, golden.y, golden.w, golden.h)
+			)
+			print(string.format("        Got:      {x=%.2f,y=%.2f,w=%.2f,h=%.2f}", bb.x, bb.y, bb.width, bb.height))
 			return false
 		end
 
 		if lua_cmd.commandType ~= golden.commandType then
-			print(string.format("  INFO: Command %d type differs (C=%d, Lua=%d) - this is expected as IDs differ",
-				i, golden.commandType, tonumber(lua_cmd.commandType)))
+			print(
+				string.format(
+					"  INFO: Command %d type differs (C=%d, Lua=%d) - this is expected as IDs differ",
+					i,
+					golden.commandType,
+					tonumber(lua_cmd.commandType)
+				)
+			)
 		end
 	end
 

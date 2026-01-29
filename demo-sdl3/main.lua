@@ -34,11 +34,7 @@ print("DEBUG: TTF init OK")
 
 print("DEBUG: Creating window...")
 -- Create window
-local window = sdl.createWindow(
-	"Llay + SDL3 Demo",
-	WINDOW_WIDTH, WINDOW_HEIGHT,
-	0
-)
+local window = sdl.createWindow("Llay + SDL3 Demo", WINDOW_WIDTH, WINDOW_HEIGHT, 0)
 assert(window ~= nil, "Failed to create window")
 print("DEBUG: Window OK")
 
@@ -70,16 +66,16 @@ local function measure_text(text_str, config)
 	local h_ptr = ffi.new("int[1]")
 	local success = ttf.getStringSize(font, text_str, #text_str, w_ptr, h_ptr)
 	if success then
-		return {width = w_ptr[0], height = h_ptr[0]}
+		return { width = w_ptr[0], height = h_ptr[0] }
 	else
 		-- Fallback estimation
-		return {width = #text_str * 10, height = 16}
+		return { width = #text_str * 10, height = 16 }
 	end
 end
 
 print("DEBUG: Initializing llay...")
 -- Initialize llay
-llay.init(1024 * 1024 * 16, {width = WINDOW_WIDTH, height = WINDOW_HEIGHT}) -- 16MB arena
+llay.init(1024 * 1024 * 16, { width = WINDOW_WIDTH, height = WINDOW_HEIGHT }) -- 16MB arena
 print("DEBUG: llay init OK")
 
 print("DEBUG: Setting measure text function...")
@@ -118,54 +114,54 @@ while running do
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Building layout...")
 	end
-	
+
 	-- Build layout
 	llay.begin_layout()
 
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Building element tree...")
 	end
-	
+
 	llay.Element({
 		layout = {
 			sizing = { width = "GROW", height = "GROW" },
 			layoutDirection = llay.LayoutDirection.TOP_TO_BOTTOM,
 			padding = { 20, 20, 20, 20 },
-			childGap = 16
+			childGap = 16,
 		},
-		backgroundColor = { r = 43, g = 43, b = 43, a = 255 }
+		backgroundColor = { r = 43, g = 43, b = 43, a = 255 },
 	}, function()
 		-- Title
 		llay.Text("Llay + SDL3 Demo", {
 			fontSize = 32,
-			color = { r = 220, g = 220, b = 220, a = 255 }
+			color = { r = 220, g = 220, b = 220, a = 255 },
 		})
-		
+
 		-- Subtitle
 		llay.Text("Powered by SDL3 - The Latest!", {
 			fontSize = 20,
-			color = { r = 180, g = 220, b = 255, a = 255 }
+			color = { r = 180, g = 220, b = 255, a = 255 },
 		})
-		
+
 		-- Card row
 		llay.Element({
 			layout = {
 				layoutDirection = llay.LayoutDirection.LEFT_TO_RIGHT,
-				childGap = 16
-			}
+				childGap = 16,
+			},
 		}, function()
 			for i = 1, 3 do
 				llay.Element({
 					layout = {
 						sizing = { width = "GROW", height = 150 },
-						padding = { 16, 16, 16, 16 }
+						padding = { 16, 16, 16, 16 },
 					},
 					backgroundColor = { r = 60 + i * 10, g = 60 + i * 10, b = 100 + i * 10, a = 255 },
-					cornerRadius = 8
+					cornerRadius = 8,
 				}, function()
 					llay.Text("Card " .. i, {
 						fontSize = 18,
-						color = { r = 255, g = 255, b = 255, a = 255 }
+						color = { r = 255, g = 255, b = 255, a = 255 },
 					})
 				end)
 			end
@@ -175,13 +171,13 @@ while running do
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Ending layout...")
 	end
-	
+
 	local render_commands = llay.end_layout()
 
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Layout complete, commands:", render_commands and render_commands.length or "nil")
 	end
-	
+
 	-- Clear screen
 	sdl.setRenderDrawColor(renderer, 43, 43, 43, 255)
 	sdl.renderClear(renderer)
@@ -189,34 +185,34 @@ while running do
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Rendering commands...")
 	end
-	
+
 	-- Render commands
 	for i = 0, render_commands.length - 1 do
 		local cmd = render_commands.internalArray[i]
 		local bounds = cmd.boundingBox
-		
+
 		-- Draw rectangles
 		if cmd.commandType == llay._core.Clay_RenderCommandType.RECTANGLE then
 			local rect_data = cmd.renderData.rectangle
 			local color = rect_data.backgroundColor
-			
+
 			sdl.setRenderDrawColor(renderer, color.r, color.g, color.b, color.a)
-			
+
 			local rect = ffi.new("SDL_FRect", {
 				x = bounds.x,
 				y = bounds.y,
 				w = bounds.width,
-				h = bounds.height
+				h = bounds.height,
 			})
 			sdl.renderFillRect(renderer, rect)
 		end
-		
+
 		-- Draw text with SDL3_ttf
 		if cmd.commandType == llay._core.Clay_RenderCommandType.TEXT then
 			local text_data = cmd.renderData.text
 			local text = ffi.string(text_data.stringContents.chars, text_data.stringContents.length)
 			local color = text_data.textColor
-			
+
 			-- Render text to surface (SDL3 API: needs length parameter)
 			local surface = ttf.renderTextBlended(font, text, #text, SDL_Color(color.r, color.g, color.b, color.a))
 			if surface ~= nil then
@@ -227,7 +223,7 @@ while running do
 						x = bounds.x,
 						y = bounds.y,
 						w = surface.w,
-						h = surface.h
+						h = surface.h,
 					})
 					sdl.renderTexture(renderer, texture, nil, dest)
 					sdl.destroyTexture(texture)
@@ -240,10 +236,10 @@ while running do
 	if frame_count == 0 then
 		print("DEBUG: Frame 0 - Presenting...")
 	end
-	
+
 	-- Present
 	sdl.renderPresent(renderer)
-	
+
 	-- Cap frame rate
 	sdl.delay(16) -- ~60 FPS
 

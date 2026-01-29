@@ -45,7 +45,9 @@ local screen_w, screen_h = 1024, 768
 local scroll_dy = 0
 local last_gc_time = 0
 
-local function iround(x) return math.floor(x + 0.5) end
+local function iround(x)
+	return math.floor(x + 0.5)
+end
 
 -- Mock Data
 local tasks = {}
@@ -207,7 +209,10 @@ local function render_ui()
 								childGap = 2,
 							},
 						}, function()
-							llay.Text(task.title, { color = task_done and COLORS.TEXT_DIM or COLORS.TEXT, fontSize = 16, fontId = 1 })
+							llay.Text(
+								task.title,
+								{ color = task_done and COLORS.TEXT_DIM or COLORS.TEXT, fontSize = 16, fontId = 1 }
+							)
 							llay.Text(task.desc, { color = COLORS.TEXT_DIM, fontSize = 13 })
 						end)
 					end)
@@ -334,10 +339,19 @@ while not rl.WindowShouldClose() do
 							temp_rect.y = iround(r.y)
 							temp_rect.width = iround(r.width)
 							temp_rect.height = iround(r.height)
-							rl.DrawRectangleRounded(temp_rect, (radius or 0) / math.max(r.width, r.height), 4, ColorFromTable(c))
+							rl.DrawRectangleRounded(
+								temp_rect,
+								(radius or 0) / math.max(r.width, r.height),
+								4,
+								ColorFromTable(c)
+							)
 						end,
 						circle = function(self, center, radius, color)
-							rl.DrawCircleV(ffi.new("Vector2", { x = center.x, y = center.y }), radius, ColorFromTable(color))
+							rl.DrawCircleV(
+								ffi.new("Vector2", { x = center.x, y = center.y }),
+								radius,
+								ColorFromTable(color)
+							)
 						end,
 					}
 					draw_fn(rect, painter)
